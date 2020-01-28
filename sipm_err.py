@@ -93,7 +93,7 @@ def translatePicoammeterPS_status(err):
 
 	err_i = int(err)
 
-	if(err_i == 0):
+	if err_i == 0:
 		print("No error in the power supply!")
 		return True
 
@@ -123,9 +123,6 @@ def translate_ESR(esr):
 def checkPicoAmmeterStatus(port):
 	# U1 = Send machine error status word
 	port.scpi_write('U1X')
-	port.flush()
-	port.wait_cmd_done()
-
 	err_word = port.readline()
 	err_word = err_word.decode("ASCII")
 	err_val = float(err_word) - 4870000000000000
@@ -146,9 +143,6 @@ def checkPicoAmmeterStatus(port):
 def checkPicoammeterPS_status(port):
 	# U9 = Power supply error status word
 	port.scpi_write('U9X')
-	port.flush()
-	port.wait_cmd_done()
-
 	err_word = port.readline()
 	err_word = err_word.decode("ASCII")
 	err_val = float(err_word) - 48700

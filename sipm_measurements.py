@@ -25,7 +25,7 @@ class sipmMeasurements:
 		cmd = 'R' + str(self.currentPicoRange + 1) + 'X'
 
 		self.port.scpi_write(cmd)
-		self.port.wait_cmd_done()
+		self.port.wait_cmd_done_487()
 
 	def lowerPicoammeterRange(self):
 		self.port.set_to_pico()
@@ -39,7 +39,7 @@ class sipmMeasurements:
 		cmd = 'R' + str(self.currentPicoRange + 1) + 'X'
 
 		self.port.scpi_write(cmd)
-		self.port.wait_cmd_done()
+		self.port.wait_cmd_done_487()
 
 	def prepVoltageMeasurement(self):
 		self.port.set_to_DMM()
@@ -54,14 +54,17 @@ class sipmMeasurements:
 		self.port.set_to_pico()
 		self.port.scpi_write('N1X')
 		self.port.flush()
-		self.port.wait_cmd_done()
+		self.port.wait_cmd_done_487()
 
 		# TODO: check status
 		# port.readline()
 
 	def prepMeasurements(self):
-		self.prepVoltageMeasurement()
 		self.prepCurrentMeasurement()
+		self.prepVoltageMeasurement()
+
+
+
 
 	# Triggers all the instruments by sending a pulse
 	def triggerInstruments(self):

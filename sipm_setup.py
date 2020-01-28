@@ -21,7 +21,7 @@ def setToDMM(port):
 def setup_GPIB_controller(port):
 	print('Performing GPIB controller setup...')
 	port.write(b'++rst\n')
-	time.delay(5) # Should not be doing this... but no opc command
+	time.sleep(5) # Should not be doing this... but no opc command
 	# port.write(b'++opc?\n')
 
 	port.write(b'++mode 1\n') # Sets in CONTROLLER mode
@@ -46,7 +46,11 @@ def setup_GPIB_controller(port):
 ranges = {1: '2nA', 2: '20nA', 3: '200nA', 4: '2uA', 5: '20uA', 6: '200uA', 7: '2mA'}
 def setup_Picoammeter(port, zeroCheck=False):
 	print('Performing 487 Picoammeter setup...')
-	port.set_to_pico()
+	port.scpi_write('++addr 22')
+	port.scpi_write('M16X')
+	port.flush()
+	
+	port.wait_cmd_done_487()
 	## C2 = Enable zero check and perform zero correction (must be done for each range)
 	## G1 = ASCII readings without prefix
 	## L2 = return to saved default conditions (I will assume the calibration is done....)
@@ -55,13 +59,17 @@ def setup_Picoammeter(port, zeroCheck=False):
 	## T7 = One shot on External Trigger
 	## W0X = No trigger delay
 	## N1 = Buffer holds 1 value
-	port.scpi_write('*RST')
-	port.wait_cmd_done()
+	print('Clearing device')
+	port.scpi_write('++clr')
+	port.wait_cmd_done_487()
 
-	port.scpi_write('G1O0R1T7W0N1X')
+	print('Sending starting command')
+	port.wait_cmd_done_487()
+
+	port.scpi_write('K0W0G1O0R1T7X')
 	port.flush()
 	# Some time to wait for the last, then ask for status
-	port.wait_cmd_done()
+	port.wait_cmd_done_487()
 
 	# port.write(b'W0X\n')
 	# U1 = Send machine error status word
@@ -74,7 +82,7 @@ def setup_Picoammeter(port, zeroCheck=False):
 				# I timed the time it takes to do the zero correction and is around 20 secs
 				# Thats why I am using wait_long_cmd
 				port.scpi_write('C2X')
-				port.wait_long_cmd()
+				port.wait_cmd_done_487()
 				
 
 					
@@ -89,7 +97,10 @@ def setup_Picoammeter(port, zeroCheck=False):
 		else:
 			raise Exception('Picoammeter status failed after zero check.')
 	else:
-		return True
+		if checkPicoAmmeterStatus(port):
+			return True
+		else:
+			raise Exception('Picoammeter failed to verify.')
 
 def setup_Picoammeter_PS(port):
 	print('Performing 487 Picoammeter Power Supply setup...')
@@ -100,7 +111,7 @@ def setup_Picoammeter_PS(port):
 	# Turn on source
 	port.scpi_write('O1X')
 
-	port.wait_cmd_done()
+	port.wait_cmd_done_487()
 
 	if checkPicoammeterPS_status(port):
 		print('Done with power supply setup!')
@@ -116,7 +127,7 @@ def setup_DMM(port):
 	# Set DMM in a known state
 	port.scpi_write('*RST')
 
-	port.wait_cmd_done(port)
+	port.wait_cmd_done()
 
 	port.scpi_write('*IDN?')
 	txt = port.readline()
@@ -135,7 +146,7 @@ def setup_DMM(port):
 	port.scpi_write('TRIG:DEL 0')
 	# Input impedance auto
 	port.flush()
-	port.wait_cmd_done(port)
+	port.wait_cmd_done()
 	# port.write(b'INP:IMP:AUTO ON\n')
 	print('Done with multimeter setup!')
 
@@ -158,7 +169,7 @@ def setupRedPitaya():
 
 def setup(zeroCheck=False):
 	rp_s = setupRedPitaya()
-	gpib_usb_controller = SCPI_port.SCPI_port(portName, 19200, timeout=15, write_timeout=0.1)
+	gpib_usb_controller = SCPI_port(portName, 19200, timeout=15)
 
 	measure_Manager = sipmMeasurements(gpib_usb_controller, rp_s)
 
@@ -185,7 +196,9 @@ def setup(zeroCheck=False):
 		raise Exception("Serial port failed to open.")
 
 def close(port, rp_s):
-	port.write(b'O0X\n')
+	port.scpi_write('O0X')
+	port.flush()
+	port.wait_cmd_done_487()
 	port.close()
 	rp_s.close()
 

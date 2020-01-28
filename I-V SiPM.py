@@ -11,7 +11,7 @@ import time
 from itertools import count
 
 # plt.style.use('fivethirtyeight')
-fileManager = sipm_dataTaking.sipmDataTaking("../../Data/sipm_Test_longtermstability.csv")
+fileManager = sipm_dataTaking.sipmDataTaking("../../Data/test.csv")
 time_vals = []
 current_vals = []
 voltage_vals = []
@@ -88,8 +88,8 @@ def BackgroundOverTime(meas, voltMan, port):
 
 def IVRoutine(meas, voltMan):
 	dV = 0.25
-	Vf = 40
-	n = 5000
+	Vf = 40.25
+	n = 10
 
 	## This was measured to be 300us
 	C = 4*1.28e-9
@@ -146,15 +146,20 @@ def IVRoutine(meas, voltMan):
 def main():
 	port, rp_port = sipm_setup.setup(zeroCheck=False)
 
-	measManager = sipm_measurements.sipmMeasurements(port, rp_port)
-	voltManager = sipm_voltage.sipmVoltage(port)
+	try:
+		
 
-	#BackgroundOverTime(meas, port)
-	IVRoutine(measManager, voltManager)
+		measManager = sipm_measurements.sipmMeasurements(port, rp_port)
+		voltManager = sipm_voltage.sipmVoltage(port)
 
-	sipm_setup.close(port, rp_port)
-	print('Done!')
-	
+		#BackgroundOverTime(meas, port)
+		IVRoutine(measManager, voltManager)
+
+		
+		print('Done!')
+	finally:
+		print('Closing ports...')
+		sipm_setup.close(port, rp_port)
 
 if __name__ == '__main__':
     main()

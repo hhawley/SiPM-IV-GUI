@@ -23,7 +23,7 @@ class sipmVoltage:
 			self.port.scpi_write('O0X')
 
 		self.port.flush()
-		self.port.wait_cmd_done()
+		self.port.wait_cmd_done_487()
 
 	def setCurrentLimitHigh(self, wantHigh):
 		self.port.set_to_pico()
@@ -35,7 +35,7 @@ class sipmVoltage:
 			self.port.scpi_write('V,,0X')
 
 		self.port.flush()
-		self.port.wait_cmd_done()
+		self.port.wait_cmd_done_487()
 
 	# Sets the voltage and verifies it
 	def setVoltage(self, volt):
@@ -66,14 +66,14 @@ class sipmVoltage:
 		print('Current output voltage is %s' % volt_s)
 
 		self.port.scpi_write(volt_s)
-		self.port.wait_cmd_done()
+		self.port.flush()
+		self.port.wait_cmd_done_487()
 
 		# Returns current voltage output
 		self.port.scpi_write('U8X')
 		volt_received = self.port.readline()
-		
 
-		if volt_received == b'':
+		if volt_received == b'\r\n':
 			raise Exception('Failed retrieving the current voltage value.')
 
 		# String comes as VS=[VALUE]V\r\n
@@ -101,6 +101,6 @@ class sipmVoltage:
 
 
 	# print(st[3:-1])
-testF = 0
+# testF = 0
 
-print('Test %.2f' % testF)
+# print('Test %.2f' % testF)
