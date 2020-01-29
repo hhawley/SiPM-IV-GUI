@@ -24,7 +24,7 @@ def ArduinoRoutine_process(toIV, toFile):
 		
 		while not onGoing:
 			try:
-				item = queue.get_nowait()
+				item = toIV.get_nowait()
 				onGoing	= True
 			except Empty as err:
 				onGoing	= False
@@ -37,11 +37,11 @@ def ArduinoRoutine_process(toIV, toFile):
 			time.sleep(2)
 
 			vals = arduinoManager.retrieveMeasurements()
-			toFile.put(vals, total)
+			toFile.put([vals, total])
 			total = total + 1
 
 			try:
-				item = queue.get_nowait()
+				item = toIV.get_nowait()
 				onGoing	= False
 			except Empty as err:
 				onGoing	= True
@@ -67,8 +67,8 @@ def IVRoutine_process(toArd, toFile):
 		total = 0
 		dV = 0.25	# Voltage jump
 		Vi = 40		# Initial Voltage
-		Vf = 40.25 	# Final Voltage
-		n = 10 		# Number of samples per voltage
+		Vf = 40 	# Final Voltage
+		n = 3600 	# Number of samples per voltage
 		ni = 0 		# Should always start at 0
 
 		## This was measured to be 300us
@@ -80,6 +80,7 @@ def IVRoutine_process(toArd, toFile):
 		tau = np.sqrt(tauSiPM*tauSiPM + tauInstrument*tauInstrument)
 
 		toArd.put(True)
+		toFile.put([True, n*(1+(Vf-Vi)/dV)])
 		while Vi <= Vf:
 			voltMan.setVoltage(Vi)
 			time.sleep(tau)
@@ -105,7 +106,7 @@ def IVRoutine_process(toArd, toFile):
 		voltMan.setVoltage(0)
 
 		toArd.put(False)
-		toFile.put(None, None, False)
+		toFile.put([None, None, False])
 
 		plt.subplot(2, 2, 1)
 		plt.plot(voltage_vals, current_vals, 'ro')
@@ -130,9 +131,10 @@ def IVRoutine_process(toArd, toFile):
 		
 def FileRoutine_process(toIv, toArd):
 	file = None
+	nameofMeasurements = '1-hour-SiPM-base_2'
 
 	try:
-		file = sipm_dataTaking.sipmFileManager('TestDB.hdf5')
+		file = sipm_dataTaking.sipmFileManager('SiPMDataDB.hdf5')
 
 		### Initial while-loop to start the program ###
 		timeout = 60 # secs
@@ -152,7 +154,7 @@ def FileRoutine_process(toIv, toArd):
 				# item[0] -> start
 				# item[1] -> num of elements
 				onGoing	= items[0]
-				file.createDataSet(item[1], 'Test01')
+				file.createDataSet(items[1], nameofMeasurements)
 			except Empty as err:
 				pass
 
@@ -169,7 +171,7 @@ def FileRoutine_process(toIv, toArd):
 				if items[0] is not None:
 					file.add_IV(items[0], items[1])
 
-				onGoing = item[2]
+				onGoing = items[2]
 			except Empty as err:
 				pass
 

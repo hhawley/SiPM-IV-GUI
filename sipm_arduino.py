@@ -13,6 +13,8 @@ class sipmArduino:
 		self.humidity = 0.0
 		self.timestamp = 0
 
+		self.startTime = time.time()
+
 	def setup(self):
 		self.port.open()
 
@@ -29,7 +31,7 @@ class sipmArduino:
 
 		if self.port.readline().decode('ASCII') == 'OK\r\n':
 			# https://stackoverflow.com/questions/13890935/does-pythons-time-time-return-the-local-or-utc-timestamp
-			self.timestamp = time.time()
+			self.timestamp = time.time() - self.startTime
 			 # self.timestamp = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
 			return True
 		else:
