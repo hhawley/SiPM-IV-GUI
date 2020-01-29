@@ -69,7 +69,7 @@ class sipmMeasurements:
 	# Triggers all the instruments by sending a pulse
 	def triggerInstruments(self):
 		## Making sure its at HIGH
-		self.measTime = time.time() - self.startTime
+		self.measTime = time.time()
 		self.rpport.tx_txt('DIG:PIN DIO7_P, 1')
 		time.sleep(0.000001) # 1 us
 		self.rpport.tx_txt('DIG:PIN DIO7_P, 0')

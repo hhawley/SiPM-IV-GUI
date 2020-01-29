@@ -1,23 +1,52 @@
-import pandas as pd
+import h5py
 import time
 import os
 
-class sipmDataTaking:
+class sipmFileManager:
 
 	def __init__(self, filedir):
 		self.filedir = filedir
-		self.measurements = ''
 
 		if os.path.isfile(filedir):
-			self.measurements = pd.read_csv(filedir, names=['time', 'voltage', 'current'], header=0)
+			self.file = h5py.File(filedir, 'a', libver='latest')
+			self.sipm_group = self.file['SiPMs Measurements']
+			
 		else:
-			open(filedir, 'w')
-			self.measurements = pd.read_csv(filedir, names=['time', 'voltage', 'current'], header=0)
+			self.file = h5py.File(filedir, 'w', libver='latest')
+			self.sipm_group = self.file.create_group('SiPMs Measurements')
 
-	def add(self, meas):
-		ttt = {'time': meas[0], 'voltage': meas[1], 'current': meas[2]}
+		# self.file.swmr_mode = True
 
-		self.measurements = self.measurements.append(ttt, ignore_index=True)
+	def createDataSet(self, n, dbName):
+		self.curr_meas = self.sipm_group.create_group('%s' % dbName)
+		self.IV_measurements = self.curr_meas.create_dataset('%s_IV' % dbName, (n, 3))
+		self.HT_measurements = self.curr_meas.create_dataset('%s_HT' % dbName, (n, 3))
 
-	def save(self):
-		self.measurements.to_csv(self.filedir, mode='w', index=False)
+	def add_IV(self, meas, i):
+		self.IV_measurements[i] = meas
+
+	def add_HT(self, meas, i):
+		self.HT_measurements[i] = meas
+
+	def close(self):
+		self.file.close()
+
+
+# import numpy as np
+# f = sipmFileManager('TestDB.hdf5')
+
+# a = np.random.rand(2,3)
+# print(a)
+
+# f.createDataSet(2, 'test')
+
+# print(f.IV_measurements[:])
+
+# for i in range(0, 2):
+# 	f.add_IV(a[i], i)
+
+
+# print(f.IV_measurements[:])
+
+
+# f.close()
