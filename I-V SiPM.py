@@ -3,6 +3,7 @@ import sipm_measurements
 import sipm_voltage
 import sipm_dataTaking
 import sipm_arduino
+from grapher import grapher_process
 
 from multiprocessing import Process, Queue
 from queue import Empty
@@ -66,9 +67,9 @@ def IVRoutine_process(toArd, toFile):
 		voltage_vals = []
 		total = 0
 		dV = 0.25	# Voltage jump
-		Vi = 40		# Initial Voltage
-		Vf = 40 	# Final Voltage
-		n = 3600 	# Number of samples per voltage
+		Vi = 40 #I ial Voltage
+		Vf = 63 #Ininal Voltage
+		n = 10 	# Number of samples per voltage
 		ni = 0 		# Should always start at 0
 
 		## This was measured to be 300us
@@ -78,6 +79,9 @@ def IVRoutine_process(toArd, toFile):
 		tauInstrument = 333e-3 	# Wort case settling time for 486 instrument
 
 		tau = np.sqrt(tauSiPM*tauSiPM + tauInstrument*tauInstrument)
+
+		# Warm up
+		# time.sleep(15*60)
 
 		toArd.put(True)
 		toFile.put([True, n*(1+(Vf-Vi)/dV)])
@@ -129,9 +133,9 @@ def IVRoutine_process(toArd, toFile):
 		if port is not None and rp_port is not None:
 			sipm_setup.close(port, rp_port)
 		
-def FileRoutine_process(toIv, toArd):
+def FileRoutine_process(toIv, toArd, toGraph):
 	file = None
-	nameofMeasurements = '1-hour-SiPM-base_2'
+	nameofMeasurements = 'I_V_Sipm_w_Air'
 
 	try:
 		file = sipm_dataTaking.sipmFileManager('SiPMDataDB.hdf5')
@@ -170,6 +174,8 @@ def FileRoutine_process(toIv, toArd):
 				# item[2] -> should stop
 				if items[0] is not None:
 					file.add_IV(items[0], items[1])
+					toGraph.put([items[0][0], None, items[0][1], items[0][2], None, None, True])
+
 
 				onGoing = items[2]
 			except Empty as err:
@@ -180,6 +186,7 @@ def FileRoutine_process(toIv, toArd):
 				# item[0] -> value to save
 				# item[1] -> index
 				file.add_HT(items[0], items[1])
+				toGraph.put([None, items[0][0], None, None, items[0][1], items[0][2], True])
 			except Empty as err:
 				pass
 	finally:
@@ -191,18 +198,23 @@ def main():
 		iv_ard_Queue = Queue()
 		iv_file_Queue = Queue()
 		file_ard_Queue = Queue()
+		file_graph_Queue = Queue()
 
 		iv_process = Process(target=IVRoutine_process, args=(iv_ard_Queue, iv_file_Queue))
 		humtemp_process = Process(target=ArduinoRoutine_process, args=(iv_ard_Queue, file_ard_Queue))
-		file_process = Process(target=FileRoutine_process, args=(iv_file_Queue, file_ard_Queue))
+		file_process = Process(target=FileRoutine_process, args=(iv_file_Queue, file_ard_Queue, file_graph_Queue))
+		g_process = Process(target=grapher_process, args=(file_graph_Queue,))
+		
 
 		iv_process.start()
 		humtemp_process.start()
 		file_process.start()
+		g_process.start()
 
 		iv_process.join()
 		humtemp_process.join()
 		file_process.join()
+		g_process.join()
 
 		# IVRoutine(measManager, voltManager)
 
