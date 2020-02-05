@@ -4,11 +4,12 @@ import redpitaya_scpi as scpi
 
 class sipmMeasurements:
 	def __init__(self, port, rpport):
-		# 0 = lowest range
 		self.port = port
+		# 0 = lowest range
 		self.currentPicoRange = 0
 		self.rpport = rpport
-		self.maxPicorange = 8
+		# Max is 8 but the 2mA range is not calibrated, dont use
+		self.maxPicorange = 7
 		self.startTime = time.time()
 		self.measTime = time.time()
 
@@ -20,9 +21,9 @@ class sipmMeasurements:
 		else:
 			self.currentPicoRange = self.currentPicoRange + 1
 
-		print('Increasing range!')
+		print('Increasing range on the picoammeter.')
 
-		cmd = 'R' + str(self.currentPicoRange + 1) + 'X'
+		cmd = 'R%dX' % (self.currentPicoRange + 1)
 
 		self.port.scpi_write(cmd)
 		self.port.wait_cmd_done_487()
@@ -36,7 +37,7 @@ class sipmMeasurements:
 			self.currentPicoRange = self.currentPicoRange - 1
 
 		print('Decreasing range!')
-		cmd = 'R' + str(self.currentPicoRange + 1) + 'X'
+		cmd = 'R%dX' % (self.currentPicoRange + 1)
 
 		self.port.scpi_write(cmd)
 		self.port.wait_cmd_done_487()
@@ -60,6 +61,10 @@ class sipmMeasurements:
 		# port.readline()
 
 	def prepMeasurements(self):
+		# The order DOES matter
+		# There is a time issue where the current measurement
+		# is not ready even if it says it is. By putting it
+		# first it actually works better
 		self.prepCurrentMeasurement()
 		self.prepVoltageMeasurement()
 
@@ -78,6 +83,7 @@ class sipmMeasurements:
 		# Then wait 1 PLC + 0.01ms for tha values to be ready
 		time.sleep((1/60.0) + 0.01)
 
+	# Read HP 34401A manual for the commands used.
 	def retrieveVoltageMeasurement(self):
 		self.port.set_to_DMM()
 
@@ -111,10 +117,10 @@ class sipmMeasurements:
 
 		value_float = float(value)
 
-		if(abs(value_float) == 9.87e37):
+		if abs(value_float) == 9.87e37:
 			print("Overflow value! Check System?")
 			return "Overflow"
-		elif(value_float == 9.87e-37):
+		elif value_float == 9.87e-37:
 			print("Underflow value! Check System, please?")
 			return "Underflow"
 

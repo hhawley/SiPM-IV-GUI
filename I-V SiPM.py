@@ -57,7 +57,7 @@ def IVRoutine_process(toArd, toFile):
 	port, rp_port = None, None
 
 	try:
-		port, rp_port = sipm_setup.setup(zeroCheck=False)
+		port, rp_port = sipm_setup.setup(zeroCheck=True)
 
 		meas = sipm_measurements.sipmMeasurements(port, rp_port)
 		voltMan = sipm_voltage.sipmVoltage(port)
@@ -67,9 +67,9 @@ def IVRoutine_process(toArd, toFile):
 		voltage_vals = []
 		total = 0
 		dV = 0.25	# Voltage jump
-		Vi = 40 #I ial Voltage
-		Vf = 63 #Ininal Voltage
-		n = 10 	# Number of samples per voltage
+		Vi = 0 #I ial Voltage
+		Vf = 0 #Ininal Voltage
+		n = 1000 	# Number of samples per voltage
 		ni = 0 		# Should always start at 0
 
 		## This was measured to be 300us
@@ -80,13 +80,17 @@ def IVRoutine_process(toArd, toFile):
 
 		tau = np.sqrt(tauSiPM*tauSiPM + tauInstrument*tauInstrument)
 
+		# For the no voltage measurement.
+		voltMan.multimeterState(False)
+		voltMan.setVoltage(0)
+
 		# Warm up
 		# time.sleep(15*60)
 
 		toArd.put(True)
 		toFile.put([True, n*(1+(Vf-Vi)/dV)])
 		while Vi <= Vf:
-			voltMan.setVoltage(Vi)
+			# voltMan.setVoltage(Vi)
 			time.sleep(tau)
 
 			while ni < n:
@@ -95,9 +99,9 @@ def IVRoutine_process(toArd, toFile):
 
 				toFile.put([[t, volt, curr], total, True])
 
-				time_vals.append(t)
-				voltage_vals.append(volt)
-				current_vals.append(curr)
+				# time_vals.append(t)
+				# voltage_vals.append(volt)
+				# current_vals.append(curr)
 
 				ni = ni + 1
 				total = total + 1
@@ -112,22 +116,22 @@ def IVRoutine_process(toArd, toFile):
 		toArd.put(False)
 		toFile.put([None, None, False])
 
-		plt.subplot(2, 2, 1)
-		plt.plot(voltage_vals, current_vals, 'ro')
-		plt.xlabel('Voltage (V)')
-		plt.ylabel('Current (A)')
+		# plt.subplot(2, 2, 1)
+		# plt.plot(voltage_vals, current_vals, 'ro')
+		# plt.xlabel('Voltage (V)')
+		# plt.ylabel('Current (A)')
 
-		plt.subplot(2, 2, 2)
-		plt.plot(time_vals, current_vals)
-		plt.xlabel('time (s)')
-		plt.ylabel('Current (A)')
+		# plt.subplot(2, 2, 2)
+		# plt.plot(time_vals, current_vals)
+		# plt.xlabel('time (s)')
+		# plt.ylabel('Current (A)')
 
-		plt.subplot(2, 2, 4)
-		plt.plot(time_vals, voltage_vals)
-		plt.xlabel('time (s)')
-		plt.ylabel('Voltage (V)')
+		# plt.subplot(2, 2, 4)
+		# plt.plot(time_vals, voltage_vals)
+		# plt.xlabel('time (s)')
+		# plt.ylabel('Voltage (V)')
 
-		plt.show()
+		# plt.show()
 	finally:
 		print('Closing ports...')
 		if port is not None and rp_port is not None:
@@ -176,7 +180,6 @@ def FileRoutine_process(toIv, toArd, toGraph):
 					file.add_IV(items[0], items[1])
 					toGraph.put([items[0][0], None, items[0][1], items[0][2], None, None, True])
 
-
 				onGoing = items[2]
 			except Empty as err:
 				pass
@@ -189,6 +192,9 @@ def FileRoutine_process(toIv, toArd, toGraph):
 				toGraph.put([None, items[0][0], None, None, items[0][1], items[0][2], True])
 			except Empty as err:
 				pass
+	except:
+		print('Error with the file manager. Deleting previous data base.')
+		file.deleteDataSet()
 	finally:
 		if file is not None:
 			file.close()

@@ -1,6 +1,6 @@
 import serial
 
-#https://stackoverflow.com/questions/39644638/how-to-take-the-nth-digit-of-a-number-in-python
+# https://stackoverflow.com/questions/39644638/how-to-take-the-nth-digit-of-a-number-in-python
 def get_digit(number, n):
     return number // 10**n % 10
 

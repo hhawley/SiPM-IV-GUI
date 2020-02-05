@@ -1,6 +1,9 @@
 import serial
 import time
 
+# My own serial port manager that uses the progologix ver 6.X
+# GPIB to USB converter and assumed that the
+# Keithley 487 and a HP 34401A are connected
 class SCPI_port(serial.Serial):
 	def __init__(self, \
 		port=None, baudrate=9600, bytesize=serial.EIGHTBITS, \
@@ -79,18 +82,23 @@ class SCPI_port(serial.Serial):
 
 		return esr or (timeoutCounter < timeout)
 
+	# HP 34401A Addr
 	def set_to_DMM(self):
 		self.scpi_write('++addr 1')
 		self.flush()
 
-		self.wait_cmd_done()
+		# So THIS was the reason it was taking too long!
+		#self.wait_cmd_done()
 
+	# Keithley 487
 	def set_to_pico(self):
 		self.scpi_write('++addr 22')
 		self.flush()
 
-		self.wait_cmd_done_487()
+		# So THIS was the reason it was taking too long!
+		# self.wait_cmd_done_487()
 
+	# TODO: not really needed in the near future
 	def read_esr(self):
 		self.scpi_write('*ESR?')
 

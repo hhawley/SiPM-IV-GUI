@@ -75,24 +75,22 @@ def setup_Picoammeter(port, zeroCheck=False):
 	# U1 = Send machine error status word
 	if zeroCheck:
 		for i in range(1, 8):
-			if(checkPicoAmmeterStatus(port)):
-				range_str = 'R' + str(i) +'X'
-				print("Zero checking for range " + ranges[i])
+			if checkPicoAmmeterStatus(port):
+				range_str = 'R%dX' % i
+				print("Zero checking for range ", ranges[i])
 				port.scpi_write(range_str)
-				# I timed the time it takes to do the zero correction and is around 20 secs
-				# Thats why I am using wait_long_cmd
 				port.scpi_write('C2X')
-				port.wait_cmd_done_487()
-				
-
-					
+				# timeout is raised to 30 secs here as the zero correction can take a long time
+				# depending on the range
+				port.wait_cmd_done_487(timeout=30)
 			else:
-				raise Exception('Zero check failed at range {}'.format(ranges[i]))
+				raise Exception('Zero check failed at range %s' % ranges[i])
 
 		if(checkPicoAmmeterStatus(port)):
 			print("Picoammeter setup!")
 			# Return to 2nA after all the zero checking
 			port.scpi_write('R1X')
+			port.wait_cmd_done_487()
 			return True
 		else:
 			raise Exception('Picoammeter status failed after zero check.')
@@ -177,7 +175,7 @@ def setup(zeroCheck=False):
 		setup_GPIB_controller(gpib_usb_controller)
 		setup_DMM(gpib_usb_controller)
 
-		if(setup_Picoammeter(gpib_usb_controller, zeroCheck)):
+		if setup_Picoammeter(gpib_usb_controller, zeroCheck):
 
 			setup_Picoammeter_PS(gpib_usb_controller)
 
@@ -196,11 +194,13 @@ def setup(zeroCheck=False):
 		raise Exception("Serial port failed to open.")
 
 def close(port, rp_s):
-	port.scpi_write('O0X')
-	port.flush()
-	port.wait_cmd_done_487()
-	port.close()
-	rp_s.close()
+	if port and rp_s:
+		# Lets make 100% sure the output voltage is off
+		port.scpi_write('O0X')
+		port.flush()
+		port.wait_cmd_done_487()
+		port.close()
+		rp_s.close()
 
 
 if __name__ == '__main__':

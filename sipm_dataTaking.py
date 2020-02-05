@@ -19,7 +19,7 @@ class sipmFileManager:
 		# self.file.swmr_mode = True
 
 	def createDataSet(self, n, dbName):
-		self.curr_meas = self.sipm_group.create_group('%s' % dbName)
+		self.curr_meas = self.sipm_group.create_group(dbName)
 		self.curr_meas.attrs['Date'] = datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')
 		self.curr_meas.attrs['Author'] = 'Hector Hawley Herrera'
 
@@ -36,6 +36,9 @@ class sipmFileManager:
 	def close(self):
 		self.file.close()
 
+	def deleteDataSet(self):
+		if self.curr_meas:
+			del self.curr_meas
 
 # import numpy as np
 # f = sipmFileManager('TestDB.hdf5')
