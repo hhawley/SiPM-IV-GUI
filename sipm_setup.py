@@ -82,7 +82,7 @@ def setup_Picoammeter(port, zeroCheck=False):
 				port.scpi_write('C2X')
 				# timeout is raised to 30 secs here as the zero correction can take a long time
 				# depending on the range
-				port.wait_cmd_done_487(timeout=30)
+				port.wait_cmd_done_487(timeout=60)
 			else:
 				raise Exception('Zero check failed at range %s' % ranges[i])
 
@@ -107,7 +107,7 @@ def setup_Picoammeter_PS(port):
 	# Set Voltage to 0 volts, range 50V, 25uA max current
 	port.scpi_write('V0,0,0X')
 	# Turn on source
-	port.scpi_write('O1X')
+	# port.scpi_write('O1X')
 
 	port.wait_cmd_done_487()
 

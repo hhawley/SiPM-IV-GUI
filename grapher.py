@@ -69,7 +69,7 @@ def grapher_process(fromFileQ):
 
 	anim = FuncAnimation(plt.gcf(), animate, \
 		fargs=(fromFileQ, [time_vals, time2_vals, voltage_vals, current_vals, humidity_vals, temperature_vals]), \
-		interval=1000)
+		interval=300)
 
 	plt.show()
 

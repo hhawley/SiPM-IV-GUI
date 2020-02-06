@@ -38,7 +38,6 @@ class SCPI_port(serial.Serial):
 
 		while not (srq or timeoutCounter > timeout): 
 			self.scpi_write('++srq')
-			self.flush()
 			srq = self.readline()
 			
 			srq = srq.decode('ASCII') == '1\r\n'
@@ -52,10 +51,6 @@ class SCPI_port(serial.Serial):
 
 
 	def wait_cmd_done(self):
-		status = False
-		startTime = time.time()
-		timeoutCounter = 0.0
-	
 		self.scpi_write('*OPC?')
 		s = self.readline()
 
@@ -70,22 +65,23 @@ class SCPI_port(serial.Serial):
 
 		self.scpi_write('*CLS')
 		self.scpi_write('*OPC')
-		self.flush()
+		# self.flush()
 
 		while not (esr or timeoutCounter > timeout): 
 			self.scpi_write('*ESR?')
 			esr = self.readline()
 			esr = int(s.decode('ASCII')) & 1
 
-			time.sleep(0.1)
-			timeoutCounter = (time.time() - startTime) 
+			if not srq:
+				time.sleep(0.1)
+				timeoutCounter = (time.time() - startTime) 
 
 		return esr or (timeoutCounter < timeout)
 
 	# HP 34401A Addr
 	def set_to_DMM(self):
 		self.scpi_write('++addr 1')
-		self.flush()
+		# self.flush()
 
 		# So THIS was the reason it was taking too long!
 		#self.wait_cmd_done()
@@ -93,7 +89,7 @@ class SCPI_port(serial.Serial):
 	# Keithley 487
 	def set_to_pico(self):
 		self.scpi_write('++addr 22')
-		self.flush()
+		# self.flush()
 
 		# So THIS was the reason it was taking too long!
 		# self.wait_cmd_done_487()

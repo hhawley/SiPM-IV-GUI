@@ -67,13 +67,13 @@ def IVRoutine_process(toArd, toFile):
 		voltage_vals = []
 		total = 0
 		dV = 0.25	# Voltage jump
-		Vi = 0 #I ial Voltage
-		Vf = 0 #Ininal Voltage
+		Vi = 0.0 #I ial Voltage
+		Vf = 0.0 #Ininal Voltage
 		n = 1000 	# Number of samples per voltage
 		ni = 0 		# Should always start at 0
 
 		## This was measured to be 300us
-		C = 4*1.28e-9
+		C = 1.28e-9
 		R = 500e3
 		tauSiPM = 6*R*C 		# 6 = For a good settling time below 1%
 		tauInstrument = 333e-3 	# Wort case settling time for 486 instrument
@@ -90,7 +90,7 @@ def IVRoutine_process(toArd, toFile):
 		toArd.put(True)
 		toFile.put([True, n*(1+(Vf-Vi)/dV)])
 		while Vi <= Vf:
-			# voltMan.setVoltage(Vi)
+			voltMan.setVoltage(Vi)
 			time.sleep(tau)
 
 			while ni < n:
@@ -139,7 +139,7 @@ def IVRoutine_process(toArd, toFile):
 		
 def FileRoutine_process(toIv, toArd, toGraph):
 	file = None
-	nameofMeasurements = 'I_V_Sipm_w_Air'
+	nameofMeasurements = 'ps_off_0v_nosipm_no_res'
 
 	try:
 		file = sipm_dataTaking.sipmFileManager('SiPMDataDB.hdf5')

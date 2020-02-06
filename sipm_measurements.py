@@ -45,7 +45,6 @@ class sipmMeasurements:
 	def prepVoltageMeasurement(self):
 		self.port.set_to_DMM()
 		self.port.scpi_write('INIT')
-		self.port.flush()
 		self.port.wait_cmd_done()
 
 		# TODO: check status
@@ -54,7 +53,6 @@ class sipmMeasurements:
 	def prepCurrentMeasurement(self):
 		self.port.set_to_pico()
 		self.port.scpi_write('N1X')
-		self.port.flush()
 		self.port.wait_cmd_done_487()
 
 		# TODO: check status
