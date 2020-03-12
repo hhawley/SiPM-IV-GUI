@@ -1,9 +1,6 @@
-import sipm_setup
-import sipm_measurements
-import sipm_voltage
-import sipm_dataTaking
-import sipm_arduino
+from sipm_files import sipm_setup, sipm_arduino, sipm_measurements, sipm_voltage, sipm_dataTaking
 from grapher import grapher_process
+from arduinoer import ArduinoRoutine_process
 
 from multiprocessing import Process, Queue
 from queue import Empty
@@ -15,40 +12,6 @@ import numpy as np
 import time
 from itertools import count
 
-# Arduino code that measures the humidity/temperature measurements
-def ArduinoRoutine_process(toIV, toFile):
-	arduinoManager = None
-	try:
-		arduinoManager = sipm_arduino.sipmArduino()
-		arduinoManager.setup()
-		onGoing = False
-		
-		while not onGoing:
-			try:
-				item = toIV.get_nowait()
-				onGoing	= True
-			except Empty as err:
-				onGoing	= False
-
-		total = 0
-		while onGoing:
-			arduinoManager.initMeasurement()
-
-			# Sleep to wait for the next measurements
-			time.sleep(2)
-
-			vals = arduinoManager.retrieveMeasurements()
-			toFile.put([vals, total])
-			total = total + 1
-
-			try:
-				item = toIV.get_nowait()
-				onGoing	= False
-			except Empty as err:
-				onGoing	= True
-	finally:
-		if arduinoManager is not None:
-			arduinoManager.close()
 
 		
 
@@ -67,8 +30,8 @@ def IVRoutine_process(toArd, toFile):
 		voltage_vals = []
 		total = 0
 		dV = 0.25	# Voltage jump
-		Vi = 0.0 #I ial Voltage
-		Vf = 0.0 #Ininal Voltage
+		Vi = 0.0 	# Intial Voltage
+		Vf = 0.0 	# Final Voltage
 		n = 1000 	# Number of samples per voltage
 		ni = 0 		# Should always start at 0
 
@@ -91,6 +54,8 @@ def IVRoutine_process(toArd, toFile):
 		toFile.put([True, n*(1+(Vf-Vi)/dV)])
 		while Vi <= Vf:
 			voltMan.setVoltage(Vi)
+
+			# Waiting for the voltage to settle
 			time.sleep(tau)
 
 			while ni < n:
@@ -162,7 +127,7 @@ def FileRoutine_process(toIv, toArd, toGraph):
 				# item[0] -> start
 				# item[1] -> num of elements
 				onGoing	= items[0]
-				file.createDataSet(items[1], nameofMeasurements)
+				file.create_dataset(items[1], nameofMeasurements)
 			except Empty as err:
 				pass
 
@@ -194,7 +159,7 @@ def FileRoutine_process(toIv, toArd, toGraph):
 				pass
 	except:
 		print('Error with the file manager. Deleting previous data base.')
-		file.deleteDataSet()
+		file.delete_dataset()
 	finally:
 		if file is not None:
 			file.close()
@@ -207,11 +172,12 @@ def main():
 		file_graph_Queue = Queue()
 
 		iv_process = Process(target=IVRoutine_process, args=(iv_ard_Queue, iv_file_Queue))
+		# Arduino code that measures the humidity/temperature measurements
 		humtemp_process = Process(target=ArduinoRoutine_process, args=(iv_ard_Queue, file_ard_Queue))
 		file_process = Process(target=FileRoutine_process, args=(iv_file_Queue, file_ard_Queue, file_graph_Queue))
+		# Code that plots every data avaliable
 		g_process = Process(target=grapher_process, args=(file_graph_Queue,))
 		
-
 		iv_process.start()
 		humtemp_process.start()
 		file_process.start()

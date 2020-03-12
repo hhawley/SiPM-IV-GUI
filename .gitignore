@@ -1,4 +1,4 @@
-redpitaya_scpi.py
+dependencies/
 __pycache__/
 sipm_project.*
 plotIV.py

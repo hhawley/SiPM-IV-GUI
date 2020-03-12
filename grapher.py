@@ -6,7 +6,7 @@ from queue import Empty
 from matplotlib.animation import FuncAnimation
 from multiprocessing import Process, Queue
 
-def animate(i, fromFileQ, vals):
+def animate_all(i, fromFileQ, vals):
 	try:
 		items = fromFileQ.get_nowait()
 		# item[0] -> time1
@@ -57,8 +57,46 @@ def animate(i, fromFileQ, vals):
 
 	except Empty as err:
 		pass
+
+def animate_humidity(i, fromFileQ, vals):
+	try:
+		items = fromFileQ.get_nowait()
+		# item[0] -> time1
+		# item[1] -> time2
+		# item[2] -> voltage
+		# item[3] -> current
+		# item[4] -> humidity
+		# item[5] -> temperature
+		for i in range(0, 6):
+			if items[i] is not None:
+				vals[i].append(items[i])
+
+		onGoing = items[5]
+
+		plt.clf()
+
+		if vals[1]:
+
+			ht_ax = plt.subplot(1, 1, 1, label='H-T')
+			ht_ax.plot(vals[1], vals[4], color='tab:blue', label='Humidity')
+			ht_ax.set_xlabel('time (s)')
+			ht_ax.set_ylabel('Humidity (%)')
+
+			ax_2 = ht_ax.twinx()
+			bb = ax_2.plot(vals[1], vals[5], color='tab:red', label='Temperature')
+			ax_2.set_ylabel('Temperature (C)')
+
+			ht_ax.legend()
+			ax_2.legend(loc=0)
+
+		
+		plt.tight_layout()
+
+	except Empty as err:
+		pass
+
 # fromFileQ -> Queue
-def grapher_process(fromFileQ):
+def grapher_process(fromFileQ, all_plot=True, humidity_only=False):
 
 	time_vals 		= []
 	time2_vals		= []
@@ -67,9 +105,14 @@ def grapher_process(fromFileQ):
 	humidity_vals 	= []
 	temperature_vals= []
 
-	anim = FuncAnimation(plt.gcf(), animate, \
-		fargs=(fromFileQ, [time_vals, time2_vals, voltage_vals, current_vals, humidity_vals, temperature_vals]), \
-		interval=300)
+	if all_plot:
+		anim = FuncAnimation(plt.gcf(), animate_all, \
+			fargs=(fromFileQ, [time_vals, time2_vals, voltage_vals, current_vals, humidity_vals, temperature_vals]), \
+			interval=300)
+	elif humidity_only:
+		anim = FuncAnimation(plt.gcf(), animate_humidity, \
+			fargs=(fromFileQ, [time_vals, time2_vals, voltage_vals, current_vals, humidity_vals, temperature_vals]), \
+			interval=1000)
 
 	plt.show()
 
@@ -86,7 +129,6 @@ def main():
 
 	test_p.start()
 	grap_p.start()
-
 
 	grap_p.join()
 	test_p.join()
