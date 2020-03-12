@@ -6,7 +6,7 @@ class sipmArduino:
 	def __init__(self, portName='COM4'):
 		self.port = serial.Serial()
 		self.port.port = portName
-		self.port.baudrate = 9600
+		self.port.baudrate = 115200
 		self.port.timeout = 15
 
 		self.temperature = 0.0
@@ -24,8 +24,11 @@ class sipmArduino:
 	def format_cmd(self, cmd):
 		return (cmd + '\n').encode()
 
+	def m_write(self, cmd):
+		self.port.wrtie(self.format_cmd(cmd))
+
 	def initMeasurement(self):
-		self.port.write(self.format_cmd('{0,W,1}'))
+		self.port.m_write('{0,W,1}')
 		self.port.flush()
 
 
@@ -41,7 +44,7 @@ class sipmArduino:
 		if self.timestamp == 0:
 			raise Exception('No measurement taken before retrieving a measurement.')
 
-		self.port.write(self.format_cmd('{1,W,1}'))
+		self.port.m_write('{1,W,1}')
 		
 
 		if self.port.readline().decode('ASCII') == 'OK\r\n':
@@ -56,5 +59,18 @@ class sipmArduino:
 			else:
 				raise Exception('Arduino returned an empty measurement string.')
 
+	def startCooling(self):
+		self.port.m_write('{3,W,1}')
+
+		if not self.port.readline().decode('ASCII') == 'OK\r\n':
+			raise Exception('Failed to communicate with the Arduino.')
+
+	def stopCooling(self):
+		self.port.m_write('{3,W,0}')
+
+		if not self.port.readline().decode('ASCII') == 'OK\r\n':
+			raise Exception('Failed to communicate with the Arduino.')
+
 	def close(self):
+		self.port.m_write('{3,W,0}')
 		self.port.close()

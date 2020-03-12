@@ -16,6 +16,7 @@ import time
 from itertools import count
 
 # Arduino code that measures the humidity/temperature measurements
+# and starts cooling
 def ArduinoRoutine_process(toIV, toFile):
 	arduinoManager = None
 	try:
