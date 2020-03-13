@@ -96,7 +96,7 @@ def animate_humidity(i, fromFileQ, vals):
 		pass
 
 # fromFileQ -> Queue
-def grapher_process(fromFileQ, all_plot=True, humidity_only=False):
+def grapher_process_main(fromFileQ, humidity_only=False):
 
 	time_vals 		= []
 	time2_vals		= []
@@ -105,17 +105,19 @@ def grapher_process(fromFileQ, all_plot=True, humidity_only=False):
 	humidity_vals 	= []
 	temperature_vals= []
 
-	if all_plot:
+	if not humidity_only:
 		anim = FuncAnimation(plt.gcf(), animate_all, \
 			fargs=(fromFileQ, [time_vals, time2_vals, voltage_vals, current_vals, humidity_vals, temperature_vals]), \
 			interval=300)
-	elif humidity_only:
+	else:
 		anim = FuncAnimation(plt.gcf(), animate_humidity, \
 			fargs=(fromFileQ, [time_vals, time2_vals, voltage_vals, current_vals, humidity_vals, temperature_vals]), \
 			interval=1000)
 
 	plt.show()
 
+
+# For testing purposes only:
 def test_process(queue):
 	for i in range(0, 100):
 		time.sleep(2)

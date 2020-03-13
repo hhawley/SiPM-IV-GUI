@@ -1,5 +1,6 @@
 from sipm_files import sipm_setup, sipm_arduino, sipm_measurements, sipm_voltage, sipm_dataTaking
 from grapher import grapher_process
+from secretary import FileRoutine_process
 from arduinoer import ArduinoRoutine_process
 
 from multiprocessing import Process, Queue
@@ -11,9 +12,6 @@ import pandas as pd
 import numpy as np
 import time
 from itertools import count
-
-
-		
 
 # I-V equipment routine
 def IVRoutine_process(toArd, toFile):
