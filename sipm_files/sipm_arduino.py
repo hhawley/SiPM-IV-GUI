@@ -7,7 +7,7 @@ class sipmArduino:
 		self.port = serial.Serial()
 		self.port.port = portName
 		self.port.baudrate = 115200
-		self.port.timeout = 15
+		self.port.timeout = 30
 
 		self.temperature = 0.0
 		self.humidity = 0.0
@@ -68,7 +68,9 @@ class sipmArduino:
 	def startCooling(self):
 		self.m_write('{3,W,1}')
 
-		if not self.port.readline().decode('ASCII') == 'OK\r\n':
+		out = self.port.readline().decode('ASCII')
+		print('[Arduino] %s' % out)
+		if not out == 'OK\r\n':
 			raise Exception('Failed to communicate with the Arduino.')
 
 	def stopCooling(self):

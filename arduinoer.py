@@ -40,7 +40,7 @@ def set_temperature(queue, man):
 	pass
 
 # Main loop of this process. Similar to Arduino loop, get it?
-def loop(queue, man):
+def loop(iv_queue, file_queue, man):
 	total = 0
 	onGoing = True
 	while onGoing:
@@ -50,11 +50,11 @@ def loop(queue, man):
 		time.sleep(2)
 
 		vals = man.retrieveMeasurements()
-		toFile.put([vals, total])
+		file_queue.put([vals, total])
 		total = total + 1
 
 		try:
-			item = toIV.get_nowait()
+			item = iv_queue.get_nowait()
 			onGoing	= False
 		except AttributeError:
 			# Error that gets executed if iv_queue is None
@@ -70,10 +70,14 @@ def arduino_process_main(toFile, toIV=None):
 	temperature = float(configs['Temperature'])
 
 	try:
+		print('[Arduino] Initializing Arduino.')
 		arduinoManager = sipm_arduino.sipmArduino()
 		arduinoManager.setup()
 
+		time.sleep(5)
+
 		# Start cooling immediately 
+		print('[Arduino] Starting cooling.')
 		arduinoManager.startCooling()
 
 		# This part might be deprecated soon keeping it for now
@@ -83,7 +87,10 @@ def arduino_process_main(toFile, toIV=None):
 			print('[Arduino] No I-V process detected. Going to loop.')
 
 		# Start taking measurements of temperature/humidity
-		loop(toIV, arduinoManager)
+		print('[Arduino] Starting measurements.')
+		loop(toIV, toFile, arduinoManager)
+	except Exception as err:
+		print('[Arduino] Error: %s' % err)
 
 	finally:
 		if arduinoManager is not None:
