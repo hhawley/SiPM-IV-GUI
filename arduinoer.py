@@ -1,10 +1,16 @@
-from sipm_files import sipm_arduino
+from sipm_files import ArduinoManager
 
 from multiprocessing import Process, Queue
 from queue import Empty
 
 import time
 import configparser
+
+from enum import Enum
+
+class STATES(Enum):
+	STANDBY=0
+	RUNNING=1
 
 def read_config():
 	config = configparser.ConfigParser()
@@ -34,16 +40,13 @@ def wait_for_main(queue, timeout=15*60):
 			onGoing	= True
 		except Empty as err:
 			onGoing	= False
+	
 
-# TODO: include temperature intialization
-def set_temperature(queue, man):
-	pass
+def runMeasurements(state, error, file_queue, man, total):
+	try:
+		print('[Arduino] Starting cooling.')
 
-# Main loop of this process. Similar to Arduino loop, get it?
-def loop(iv_queue, file_queue, man):
-	total = 0
-	onGoing = True
-	while onGoing:
+		man.startCooling()
 		man.initMeasurement()
 
 		# Sleep to wait for the next measurements
@@ -53,6 +56,68 @@ def loop(iv_queue, file_queue, man):
 		file_queue.put([vals, total])
 		total = total + 1
 
+		return True
+	except Exception as e:
+		print('[Arduino] Error while running measurements %s' % e)
+		error = error + ('%s' % e)
+		state = STATES.STANDBY
+
+# Listens to command from the boss (you)
+def listenToBoss(state, error, file_queue, man):
+	try:
+		response = file_queue.get_nowait()
+
+		if response['close']:
+			print('[Arduino] Closing.')
+			return False
+		
+		elif response['cmd'] == 'setTemperature':
+			man.setTemperature(float(response['value']))
+
+		# Only change the state to RUNNING if there are no errors	
+		elif response['cmd'] == 'setState':
+			if response['value'] == 'RUNNING' and error == '':
+				state = STATES.RUNNING
+			elif response['value'] == 'STANDBY':
+				state = STATES.STANDBY
+
+		elif response['cmd'] == 'retrieveErrors':
+			if state == STATES.STANDBY:
+				error = error + man.retrieveError()
+				man.resetError()
+
+				file_queue.put([error])
+				error = ''
+
+		return True
+
+	except Empty as err:
+		return True
+	except Exception as e:
+		print('[Arduino] Error while listening to boss: %s' % e)
+		error = error + ('%s' % e)
+		state = STATES.STANDBY
+
+
+# Main loop of this process. Similar to Arduino loop, get it?
+def loop(iv_queue, file_queue, man):
+	total = 0
+	onGoing = True
+	status = True
+	state = STATES.STANDBY
+	error = ''
+
+	while onGoing:
+
+		if state == STATES.RUNNING:
+			status = runMeasurements(state, error, file_queue, man, total)
+			onGoing = (onGoing and status)
+
+		# Only stops if boss says so
+		# and ALWAYS listens to you ;)
+		status = listenToBoss(state, error, file_queue, man)
+		onGoing = (onGoing and status)
+
 		try:
 			item = iv_queue.get_nowait()
 			onGoing	= False
@@ -60,9 +125,14 @@ def loop(iv_queue, file_queue, man):
 			# Error that gets executed if iv_queue is None
 			pass
 		except Empty as err:
-			onGoing	= True
+			pass
+		except Exception as e:
+			error = error + ('%s' % e)
+
+
 
 # Arduino code that measures the humidity/temperature measurements
+# and controls the PID
 def arduino_process_main(toFile, toIV=None):
 	arduinoManager = None
 
@@ -71,14 +141,10 @@ def arduino_process_main(toFile, toIV=None):
 
 	try:
 		print('[Arduino] Initializing Arduino.')
-		arduinoManager = sipm_arduino.sipmArduino()
+		arduinoManager = ArduinoManager.sipmArduino()
 		arduinoManager.setup()
 
 		time.sleep(5)
-
-		# Start cooling immediately 
-		print('[Arduino] Starting cooling.')
-		arduinoManager.startCooling()
 
 		# This part might be deprecated soon keeping it for now
 		if toIV:
@@ -87,8 +153,9 @@ def arduino_process_main(toFile, toIV=None):
 			print('[Arduino] No I-V process detected. Going to loop.')
 
 		# Start taking measurements of temperature/humidity
-		print('[Arduino] Starting measurements.')
+		print('[Arduino] Arduino starting in standby.')
 		loop(toIV, toFile, arduinoManager)
+
 	except Exception as err:
 		print('[Arduino] Error: %s' % err)
 
@@ -97,11 +164,3 @@ def arduino_process_main(toFile, toIV=None):
 			# Stop cooling if program is stopped in any way
 			# and open resources
 			arduinoManager.close()
-
-
-# config = configparser.ConfigParser()
-
-# with open('file.cfg') as f:
-# 	config.read_file(f)
-
-# print(config['DEFAULT']['ServerAliveInterval'])

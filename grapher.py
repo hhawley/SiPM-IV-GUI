@@ -6,97 +6,105 @@ from queue import Empty
 from matplotlib.animation import FuncAnimation
 from multiprocessing import Process, Queue
 
-def animate_all(i, fromFileQ, vals):
+def animate_all(i, file_queue, vals):
 	try:
-		items = fromFileQ.get_nowait()
+		items = file_queue.get_nowait()
 		# item[0] -> time1
 		# item[1] -> time2
 		# item[2] -> voltage
 		# item[3] -> current
 		# item[4] -> humidity
 		# item[5] -> temperature
-		for i in range(0, 6):
-			if items[i] is not None:
-				vals[i].append(items[i])
 
-		onGoing = items[5]
+		if len(items) == 6:
+			for j in range(0, 6):
+				if items[j] is not None:
+					vals[j].append(items[j])
 
-		plt.clf()
+			onGoing = items[5]
 
-		if vals[1]:
+			plt.clf()
 
-			ht_ax = plt.subplot(2, 2, 3, label='H-T')
-			ht_ax.plot(vals[1], vals[4], color='tab:blue', label='Humidity')
-			ht_ax.set_xlabel('time (s)')
-			ht_ax.set_ylabel('Humidity (%)')
+			if vals[1]:
 
-			ax_2 = ht_ax.twinx()
-			bb = ax_2.plot(vals[1], vals[5], color='tab:red', label='Temperature')
-			ax_2.set_ylabel('Temperature (C)')
+				ht_ax = plt.subplot(2, 2, 3, label='H-T')
+				ht_ax.plot(vals[1], vals[4], color='tab:blue', label='Humidity')
+				ht_ax.set_xlabel('time (s)')
+				ht_ax.set_ylabel('Humidity (%)')
 
-			ht_ax.legend()
-			ax_2.legend(loc=0)
+				ax_2 = ht_ax.twinx()
+				bb = ax_2.plot(vals[1], vals[5], color='tab:red', label='Temperature')
+				ax_2.set_ylabel('Temperature (C)')
 
-		if vals[0]:
-			iv_ax = plt.subplot(2, 2, 1, label='I-V')
-			iv_ax.plot(vals[2], vals[3], 'ro')
-			iv_ax.set_ylabel('Current (A)')
-			iv_ax.set_xlabel('Voltage (V)')
+				ht_ax.legend()
+				ax_2.legend(loc=0)
 
-			v_ax = plt.subplot(2, 2, 2, label='V')
-			v_ax.plot(vals[0], vals[3])
-			v_ax.set_xlabel('time (s)')
-			v_ax.set_ylabel('Current (A)')
+			if vals[0]:
+				iv_ax = plt.subplot(2, 2, 1, label='I-V')
+				iv_ax.plot(vals[2], vals[3], 'ro')
+				iv_ax.set_ylabel('Current (A)')
+				iv_ax.set_xlabel('Voltage (V)')
 
-			i_ax = plt.subplot(2, 2, 4, label='I')
-			i_ax.plot(vals[0], vals[2])
-			i_ax.set_xlabel('time (s)')
-			i_ax.set_ylabel('Voltage (V)')
+				v_ax = plt.subplot(2, 2, 2, label='V')
+				v_ax.plot(vals[0], vals[3])
+				v_ax.set_xlabel('time (s)')
+				v_ax.set_ylabel('Current (A)')
 
-		plt.tight_layout()
+				i_ax = plt.subplot(2, 2, 4, label='I')
+				i_ax.plot(vals[0], vals[2])
+				i_ax.set_xlabel('time (s)')
+				i_ax.set_ylabel('Voltage (V)')
+
+			plt.tight_layout()
 
 	except Empty as err:
 		pass
+	except Exception as err:
+		print('[Grapher] Error in the grapher: %s.' % err)
 
-def animate_humidity(i, fromFileQ, vals):
+def animate_humidity(i, file_queue, vals):
 	try:
-		items = fromFileQ.get_nowait()
+		items = file_queue.get_nowait()
 		# item[0] -> time1
 		# item[1] -> time2
 		# item[2] -> voltage
 		# item[3] -> current
 		# item[4] -> humidity
 		# item[5] -> temperature
-		for i in range(0, 6):
-			if items[i] is not None:
-				vals[i].append(items[i])
 
-		onGoing = items[5]
+		if len(items) == 6:
+			for j in range(0, 6):
+				if items[j] is not None:
+					vals[j].append(items[j])
 
-		plt.clf()
+			onGoing = items[5]
 
-		if vals[1]:
+			plt.clf()
 
-			ht_ax = plt.subplot(1, 1, 1, label='H-T')
-			ht_ax.plot(vals[1], vals[4], color='tab:blue', label='Humidity')
-			ht_ax.set_xlabel('time (s)')
-			ht_ax.set_ylabel('Humidity (%)')
+			if vals[1]:
 
-			ax_2 = ht_ax.twinx()
-			bb = ax_2.plot(vals[1], vals[5], color='tab:red', label='Temperature')
-			ax_2.set_ylabel('Temperature (C)')
+				ht_ax = plt.subplot(1, 1, 1, label='H-T')
+				ht_ax.plot(vals[1], vals[4], color='tab:blue', label='Humidity')
+				ht_ax.set_xlabel('time (s)')
+				ht_ax.set_ylabel('Humidity (%)')
 
-			ht_ax.legend()
-			ax_2.legend(loc=0)
+				ax_2 = ht_ax.twinx()
+				bb = ax_2.plot(vals[1], vals[5], color='tab:red', label='Temperature')
+				ax_2.set_ylabel('Temperature (C)')
 
-		
-		plt.tight_layout()
+				ht_ax.legend()
+				ax_2.legend(loc=0)
+
+			
+			plt.tight_layout()
 
 	except Empty as err:
 		pass
+	except Exception as err:
+		print('[Grapher] Error in the grapher: %s.' % err)
 
-# fromFileQ -> Queue
-def grapher_process_main(fromFileQ, humidity_only=False):
+# file_queue -> Queue
+def grapher_process_main(file_queue, humidity_only=False):
 
 	time_vals 		= []
 	time2_vals		= []
@@ -107,11 +115,11 @@ def grapher_process_main(fromFileQ, humidity_only=False):
 
 	if not humidity_only:
 		anim = FuncAnimation(plt.gcf(), animate_all, \
-			fargs=(fromFileQ, [time_vals, time2_vals, voltage_vals, current_vals, humidity_vals, temperature_vals]), \
+			fargs=(file_queue, [time_vals, time2_vals, voltage_vals, current_vals, humidity_vals, temperature_vals]), \
 			interval=300)
 	else:
 		anim = FuncAnimation(plt.gcf(), animate_humidity, \
-			fargs=(fromFileQ, [time_vals, time2_vals, voltage_vals, current_vals, humidity_vals, temperature_vals]), \
+			fargs=(file_queue, [time_vals, time2_vals, voltage_vals, current_vals, humidity_vals, temperature_vals]), \
 			interval=1000)
 
 	plt.show()

@@ -1,10 +1,12 @@
-from sipm_files import sipm_dataTaking
+from sipm_files import FileManager
 
 from multiprocessing import Process, Queue
 from queue import Empty
+from enum import Enum
 
 import time
 import configparser
+import os
 
 def read_config():
 	config = configparser.ConfigParser()
@@ -13,6 +15,43 @@ def read_config():
 		config.read_file(f)
 
 	return config['FILE']
+
+# Processes enum
+class Process(Enum):
+	NONE = 1
+	ARDUINO = 2
+	GRAPHER = 3
+	IV = 4
+	SECRETARY = 5
+	ALL = 6
+
+
+# Read the the stdin/boss and prepares the data to be ran in the loop
+def listen_to_boss(queue):
+
+	response = {'process': Process.NONE, 'close' : False, 'cmd' : '', 'value': ''}
+
+	try:
+		cmd = queue.get_nowait()
+
+		if len(cmd) == 1:
+			response['cmd'] = cmd[0]
+		elif len(cmd) == 2:
+			response['process'] = Process[cmd[0]]
+			response['cmd'] = cmd[1]
+		elif len(cmd) >= 3:
+			response['process'] = Process[cmd[0]]
+			response['cmd'] = cmd[1]
+			response['value'] = cmd[2]
+
+		response['close'] = (response['cmd'] == 'close')
+			
+		return response
+		
+	except Empty as err:
+		return None
+
+
 
 ### Initial while-loop to start the program ###
 def wait_for_main(queue, timeout=15*60):
@@ -36,7 +75,7 @@ def wait_for_main(queue, timeout=15*60):
 		except Empty as err:
 			pass
 
-def loop(ard_queue, gra_queue, file, iv_queue=None):
+def loop(ard_queue, gra_queue, boss_queue, file, iv_queue=None):
 	### Saving data to file while-loop ###
 	print('[File] Starting listening.')
 	onGoing = True
@@ -69,9 +108,38 @@ def loop(ard_queue, gra_queue, file, iv_queue=None):
 		except Empty as err:
 			pass
 		except Exception as err:
-			print(err)
+			print('[File] %s' % err)
 
-def file_process_main(ard_queue, gra_queue, iv_queue=None):
+		response = listen_to_boss(boss_queue)
+
+		if response is not None:
+			if response['process'] == Process.ARDUINO:
+				ard_queue.put(response)
+			elif response['process'] == Process.GRAPHER:
+				gra_queue.put(response)
+			elif response['process'] == Process.IV:
+				if iv_queue is not None:
+					iv_queue.put(response)
+			elif response['process'] == Process.SECRETARY:
+				pass # What to do here
+			elif response['process'] == Process.ALL:
+				ard_queue.put(response)
+				gra_queue.put(response)
+
+				if iv_queue is not None:
+					iv_queue.put(response)
+
+			if response['close']:
+				print('[File] Closing everything.')
+				ard_queue.put(response)
+				gra_queue.put(response)
+
+				if iv_queue is not None:
+					iv_queue.put(response)
+
+				break
+
+def file_process_main(ard_queue, gra_queue, boss_queue, iv_queue=None):
 	file = None
 
 	# Only three config for now. Database name, file name and comment
@@ -82,8 +150,9 @@ def file_process_main(ard_queue, gra_queue, iv_queue=None):
 	comment = configs['Comment']
 
 	try:
+		# File creation/initialization
 		print('[File] Setting up database.')
-		file = sipm_dataTaking.sipmFileManager(db_name)
+		file = FileManager.sipmFileManager(db_name)
 		file.create_dataset(name_of_measurements)
 		file.add_attribute('Comment', comment)
 
@@ -94,7 +163,7 @@ def file_process_main(ard_queue, gra_queue, iv_queue=None):
 		# else:
 		# 	print('[File] No I-V process detected. Going to loop.')
 		print('[File] No I-V process detected. Going to loop.')
-		loop(ard_queue, gra_queue, file, iv_queue=iv_queue)
+		loop(ard_queue, gra_queue, boss_queue, file, iv_queue=iv_queue)
 		
 	except Exception as err:
 		print('[File] Error with the file manager. Deleting previous data base.')
