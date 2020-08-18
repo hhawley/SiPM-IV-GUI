@@ -90,7 +90,6 @@ class sipmArduino:
 			# https://stackoverflow.com/questions/13890935/does-pythons-time-time-return-the-local-or-utc-timestamp
 			self.timestamp = time.time() - self.startTime
 			 # self.timestamp = datetime.datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S')
-			return True
 		else:
 			raise Exception('Arduino did not complete the variable transfer.')
 
@@ -142,6 +141,7 @@ class sipmArduino:
 		running = self.retrieveStatus()
 
 		if not running:
+			print("[Arduino] Starting cooling.")
 			# COMMAND_REGISTER -> TOGGLE_STATE bit
 			self.m_write('{0,W,4}')
 			self.verify_write()
@@ -150,15 +150,20 @@ class sipmArduino:
 		running = self.retrieveStatus()
 
 		if running:
+			print("[Arduino] stopped cooling.")
 			self.m_write('{0,W,4}')
 			self.verify_write()
 
 	def close(self):
-		running = self.retrieveStatus()
+		if self.port.is_open:
+			running = self.retrieveStatus()
 
-		if not running:
-			self.m_write('{0,W,4}')
-			self.verify_write()
+			if not running:
+				self.m_write('{0,W,4}')
+				self.verify_write()
+
+			# Close port to open resources
+			self.port.close()
 
 	def retrieveError(self):
 		# Command to read the current STATUS flag

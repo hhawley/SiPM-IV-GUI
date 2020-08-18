@@ -65,28 +65,17 @@ AutoPID temp_PID(&latest_temp, &desired_temp, &latest_volt,
 
 bool vt_err = 0;
 // PC comm pointers
-// Starts a hum measurement
-uint16_t* read_humidity;
-// Send a temperature (RTD) and humidity measurement
-uint16_t* send_all;
-// Ask if the temperature is near the desired temp
-uint16_t* temp_ready;
-// Toggles between STANDBY and RUNNING
-uint16_t* toggle_state;
-// Desired temp as a 16 bit unsigned int
-uint16_t* u_des_temp;
-// From u_des_temp to double temp
-// u_des_temp = 0, temp = -10 C
-// u_des_temp = 2^16 - 1, temp = 35 C
-// Asks the arduino to send the err flag
-uint16_t* reset_err;
-
 // from most significant bit to lower:
-// XXXX XXXX XXXX RESET_ERROR[1] TOGGLE_STATE[1] SEND_HT[1] READ_HUMIDIY[1]
+// XXXX XXXX XXX SET_DES_TEMP[1] RESET_ERROR[1] TOGGLE_STATE[1] SEND_HT[1] READ_HUMIDIY[1]
 // READ_HUMIDIY[1] -> Starts a hum measurement
 // SEND_HT[1] -> Send a temperature (RTD) and humidity measurement
 // TOGGLE_STATE[1] -> Toggles between STANDBY and RUNNING
 // RESET_ERROR[1] -> Resets error part of the status flag
+#define READ_HUMIDIY_BIT 0
+#define SEND_HT_BIT 1
+#define TOGGLE_STATE_BIT 2
+#define RESET_ERROR_BIT 3
+#define SET_DES_BIT 4
 uint16_t* COMMAND_REGISTER;
 // Saves the current temperature
 uint16_t* CURR_TEMP_REGISTER;
@@ -95,8 +84,12 @@ uint16_t* DESI_TEMP_REGISTER;
 // from most significant bit to lower:
 // XXXX STATUS[1] DAC_ERR[1] DHT_ERR[1] VT_ERR[1] RTD_ERR[8]  
 // No error checking for the ina219 (wattmeter) available
+#define STATUS_BIT 11
+#define DAC_ERR_BIT 10
+#define DHT_ERR_BIT 9
+#define VT_ERR_BIT 8
+#define RTD_ERR 0
 uint16_t* STATUS_FLAG;
-
 
 // temp = (35+10) / (2^16-1) (x) - 10
 double uint_to_temp(uint16_t val) {
@@ -176,23 +169,23 @@ void listen() {
 
   if(err == VT_SUCESS) {
     // Code to be executed if a correct transfer was made
-    desired_temp = uint_to_temp(*u_des_temp);
+    desired_temp = uint_to_temp(*DESI_TEMP_REGISTER);
   } else if(err != VT_NO_DATA){
     vt_err = true;
   }
 
-  if(bitRead(*COMMAND_REGISTER, 0)) {
+  if(bitRead(*COMMAND_REGISTER, READ_HUMIDIY_BIT)) {
      latest_humi = dht.readHumidity();
      dht_err = (latest_humi == NAN) & 0xFFFE;
 
-     bitWrite(*COMMAND_REGISTER, 0, 0);
+     bitWrite(*COMMAND_REGISTER, READ_HUMIDIY_BIT, false);
   }
 
-  if(bitRead(*COMMAND_REGISTER, 1)) {
+  if(bitRead(*COMMAND_REGISTER, SEND_HT_BIT)) {
     Serial.print(latest_humi);
     Serial.print(",");
     Serial.println(latest_temp);
-    bitWrite(*COMMAND_REGISTER, 1, 0);
+    bitWrite(*COMMAND_REGISTER, SEND_HT_BIT, false);
   }
 
 }
@@ -208,21 +201,20 @@ void standby() {
   // Only way to reset the STATUS_flag
   // is by being on standby and
   // asking to read it.
-  if(bitRead(*COMMAND_REGISTER, 3)) {
+  if(bitRead(*COMMAND_REGISTER, RESET_ERROR_BIT)) {
     STATUS_FLAG = 0x0000;
-    *STATUS_FLAG |= ((state & 0xFFFE) << 11);
-
-    bitWrite(*COMMAND_REGISTER, 3, 0);
+    bitWrite(*STATUS_FLAG, STATUS_BIT, state);
+    bitWrite(*COMMAND_REGISTER, RESET_ERROR_BIT, false);
   }
 
-  if(bitRead(*COMMAND_REGISTER, 2)) {
+  if(bitRead(*COMMAND_REGISTER, TOGGLE_STATE_BIT)) {
 
     if(STATUS_FLAG > 0) {
       state = RUNNING;
-      *STATUS_FLAG |= ((state & 0xFFFE) << 11);
+      bitWrite(*STATUS_FLAG, STATUS_BIT, state);
     }
 
-    bitWrite(*COMMAND_REGISTER, 2, 0);
+    bitWrite(*COMMAND_REGISTER, TOGGLE_STATE_BIT, false);
   }
 
   // In standy, the peltier should not be
@@ -251,14 +243,14 @@ void run() {
   
   if(errorCheck()) {
     state = STANDBY;
-    *STATUS_FLAG |= ((state & 0xFFFE) << 11);
+    bitWrite(*STATUS_FLAG, STATUS_BIT, state);
 
   }
 
-  if(bitRead(*COMMAND_REGISTER, 2)) {
+  if(bitRead(*COMMAND_REGISTER, TOGGLE_STATE_BIT)) {
     state = STANDBY;
-    *STATUS_FLAG |= ((state & 0xFFFE) << 11);
-    bitWrite(*COMMAND_REGISTER, 2, 0);
+    bitWrite(*STATUS_FLAG, STATUS_BIT, state);
+    bitWrite(*COMMAND_REGISTER, TOGGLE_STATE_BIT, false);
   }
 }
 

@@ -8,9 +8,38 @@ import configparser
 
 from enum import Enum
 
+# How this works:
+# arduino_process_main is the main function of this thread. It opens the 
+# arduino port, setups, and finally starts the loop
+# 			main -> setup -> loop
+#
+# The loop is where the real magic happens. It automatically starts the 
+# arduino in STANDBY mode which main function is to listen to the secretary
+# and log any errors. Only by a command coming from the secretary, the 
+# the RUNNING state will start (or INIT_RUNNING). Any error that happens in 
+# RUNNING (or INIT_RUNNING) will revert the state back to STANDBY and will 
+# only allow to go back to RUNNING unless the errors are cleared by reseting
+# from the secretary.
+#
+#			STANDBY -(if err = empty)-> INIT_RUNNING -> RUNNING
+#				^											| (if error)
+#				|___________________________________________|
+#
+# 			Secretary -('restart' cmd)-> Arduinoer
+#				^							| (sends error)
+#				|___________________________| (clears error)
+#
+# STATES INFORMATION:
+# STANDBY 		: 	Listens to secreatry, and logs errors.
+# INIT_RUNNING 	: 	Turns on the peltier, sets the desired temperature,
+#					and starts the RUNNING state + all STANDBY functions
+# RUNNING 		:   Intitialize a humidity measurement, retrieves the H/T
+# 					measurement, and sends the data to the secretary + STANDBY
+
 class STATES(Enum):
 	STANDBY=0
 	RUNNING=1
+	INIT_RUNNING=2
 
 def read_config():
 	config = configparser.ConfigParser()
@@ -20,121 +49,111 @@ def read_config():
 
 	return config['Peltier']
 
-# If timeout = 0, never times out and waits forever.
-def wait_for_main(queue, timeout=15*60):
-	timeoutCounter = 0
-	startTime = time.time()
-	onGoing = False
-
-	while not onGoing:
-		time.sleep(0.5)
-
-		if timeout != 0:
-			timeoutCounter = (time.time() - startTime) 
-
-			if timeoutCounter > timeout:
-				raise Exception('Timeout from main process. (FileManager)')
-
-		try:
-			item = queue.get_nowait()
-			onGoing	= True
-		except Empty as err:
-			onGoing	= False
-	
-
-def runMeasurements(state, error, file_queue, man, total):
+def run_measurements(state, total, man, outQueue, err):
 	try:
-		print('[Arduino] Starting cooling.')
 
-		man.startCooling()
 		man.initMeasurement()
 
 		# Sleep to wait for the next measurements
 		time.sleep(2)
 
 		vals = man.retrieveMeasurements()
-		file_queue.put([vals, total])
+		outQueue.put([vals, total])
+
 		total = total + 1
 
-		return True
-	except Exception as e:
-		print('[Arduino] Error while running measurements %s' % e)
-		error = error + ('%s' % e)
-		state = STATES.STANDBY
+		return (True, STATES.RUNNING, err)
+	except Exception as error:
+		print(f'[Arduino] Error while running measurements {error}.')
+		err = f'{err}. {error}'
+		return (True, STATES.STANDBY, err)
 
 # Listens to command from the boss (you)
-def listenToBoss(state, error, file_queue, man):
+def listen_to_Boss(state, man, inQueue, outQueue, err):
+	outState = state
 	try:
-		response = file_queue.get_nowait()
+		response = inQueue.get_nowait()
+		print(response)
 
 		if response['close']:
 			print('[Arduino] Closing.')
-			return False
+			inQueue.task_done()
+			return (False, STATES.STANDBY, err)
 		
 		elif response['cmd'] == 'setTemperature':
 			man.setTemperature(float(response['value']))
 
 		# Only change the state to RUNNING if there are no errors	
 		elif response['cmd'] == 'setState':
-			if response['value'] == 'RUNNING' and error == '':
-				state = STATES.RUNNING
+			if response['value'] == 'RUNNING' and err == '':
+				print(f'[Arduino] Changing to { response["value"] }')
+				outState = STATES.INIT_RUNNING
 			elif response['value'] == 'STANDBY':
-				state = STATES.STANDBY
+				print(f'[Arduino] Changing to { response["value"] }')
+				outState = STATES.STANDBY
 
-		elif response['cmd'] == 'retrieveErrors':
+		# Retrieves errors, send to secretary, and resets them
+		# only possible in standby mode
+		elif response['cmd'] == 'restart':
 			if state == STATES.STANDBY:
-				error = error + man.retrieveError()
+				err = f'{err}. {man.retrieveError()}'
 				man.resetError()
 
-				file_queue.put([error])
-				error = ''
+				outQueue.put([err])
+				# Waits until secretary finishes processing
+				# outQueue.join()
+				err = ''
 
-		return True
+		inQueue.task_done()
 
-	except Empty as err:
-		return True
-	except Exception as e:
-		print('[Arduino] Error while listening to boss: %s' % e)
-		error = error + ('%s' % e)
-		state = STATES.STANDBY
+		return (True, outState, err)
+
+	except Empty:
+		return (True, outState, err)
+	except Exception as error:
+		print(f'[Arduino] Error while listening to boss: {error}')
+		err = f'{err}. {error}'
+		return (True, STATES.STANDBY, err)
 
 
 # Main loop of this process. Similar to Arduino loop, get it?
-def loop(iv_queue, file_queue, man):
+def loop(man, inQueue, outQueue, commErr):
 	total = 0
 	onGoing = True
 	status = True
 	state = STATES.STANDBY
-	error = ''
 
 	while onGoing:
 
 		if state == STATES.RUNNING:
-			status = runMeasurements(state, error, file_queue, man, total)
+			status, state, commErr = run_measurements(state, total, man, outQueue, commErr)
 			onGoing = (onGoing and status)
+		elif state == STATES.INIT_RUNNING:
+			man.startCooling()
+			state = STATES.RUNNING
 
 		# Only stops if boss says so
 		# and ALWAYS listens to you ;)
-		status = listenToBoss(state, error, file_queue, man)
+		status, state, commErr = listen_to_Boss(state, man, inQueue, outQueue, commErr)
 		onGoing = (onGoing and status)
 
-		try:
-			item = iv_queue.get_nowait()
-			onGoing	= False
-		except AttributeError:
-			# Error that gets executed if iv_queue is None
-			pass
-		except Empty as err:
-			pass
-		except Exception as e:
-			error = error + ('%s' % e)
+		# Running at 100 Hz
+		time.sleep(1.0/100)
+
+	return commErr
 
 
 
 # Arduino code that measures the humidity/temperature measurements
 # and controls the PID
-def arduino_process_main(toFile, toIV=None):
+# Intializes the arduino, waits for IV (might not be used later)
+# and starts the main loop logic
+#
+# NOTE: the * at the begginning forces the function to be of the form:
+# arduino_process_main(inQueue=smth, outQueue=other)
+def arduino_process_main(*, inQueue, outQueue):
 	arduinoManager = None
+	commulativeError = ''
 
 	configs = read_config()
 	temperature = float(configs['Temperature'])
@@ -146,20 +165,19 @@ def arduino_process_main(toFile, toIV=None):
 
 		time.sleep(5)
 
-		# This part might be deprecated soon keeping it for now
-		if toIV:
-			wait_for_main(toIV)
-		else:
-			print('[Arduino] No I-V process detected. Going to loop.')
-
 		# Start taking measurements of temperature/humidity
 		print('[Arduino] Arduino starting in standby.')
-		loop(toIV, toFile, arduinoManager)
+		commulativeError = loop(arduinoManager, inQueue, outQueue, commulativeError)
 
 	except Exception as err:
-		print('[Arduino] Error: %s' % err)
+		print(f'[Arduino] Error: {err}')
+		commulativeError = f'{commulativeError}. {err}'
 
+	# If the arduinoer is closed in any way, send all errors (if any)
+	# and open resources
 	finally:
+		toFile.put([commulativeError])
+
 		if arduinoManager is not None:
 			# Stop cooling if program is stopped in any way
 			# and open resources

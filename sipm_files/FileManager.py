@@ -78,28 +78,13 @@ class sipmFileManager:
 		self.HT_measurements.resize((i+1,3))
 		self.HT_measurements[i] = meas
 
+	def reset(self):
+		print('[File] Resetting database.')
+		create_dataset(self.database_name)
+
 	def close(self):
 		self.file.close()
 
 	def delete_dataset(self):
 		if self.curr_meas:
 			del self.sipm_group[self.dbName]
-
-# import numpy as np
-# f = sipmFileManager('TestDB.hdf5')
-
-# a = np.random.rand(2,3)
-# print(a)
-
-# f.createDataSet(2, 'test')
-
-# print(f.IV_measurements[:])
-
-# for i in range(0, 2):
-# 	f.add_IV(a[i], i)
-
-
-# print(f.IV_measurements[:])
-
-
-# f.close()

@@ -8,6 +8,14 @@ import time
 import configparser
 import os
 
+# Secretary is meants as a main hub
+# for the entire software.
+# It mediates communication between the processes.
+# 
+# Commands between processes are lists, not strings.
+# If the list has 1 element it is always assumed to be an
+# error, otherwise, it is process specific.
+
 def read_config():
 	config = configparser.ConfigParser()
 
@@ -25,9 +33,18 @@ class Process(Enum):
 	SECRETARY = 5
 	ALL = 6
 
-
 # Read the the stdin/boss and prepares the data to be ran in the loop
-def listen_to_boss(queue):
+# Commands from the CMD are expected to have the 
+# following form:
+# 1) One word. General command that is expected to do
+# one single thing for the entire software. Ex.
+# "close" prepares and closes all processes.
+# 2) Two words. Command aimed at a specific process.
+# Ex. "ARDUINO retrieveErrors" sends the command
+# "retrieveErrors" to the arduinoer process.
+# 3) Three words. Same as two words command with the
+# addition of a value parameter. Ex. "ARDUINO setTemperature 10"
+def listen_to_boss(*, queue, err):
 
 	response = {'process': Process.NONE, 'close' : False, 'cmd' : '', 'value': ''}
 
@@ -46,101 +63,173 @@ def listen_to_boss(queue):
 
 		response['close'] = (response['cmd'] == 'close')
 			
-		return response
+		return (response, err)
 		
-	except Empty as err:
+	except Empty as error:
 		return None
+	except Exception as error:
+		err = f'{err}. {error}'
+		print(f'[File] Error while listening to cmd: {error}')
+		return (None, err)
 
+def listen_to_queue(*, queue, err):
+	if queue is None:
+		return (None, err)
 
+	try:
+		items = queue.get_nowait()
+		return (items, err)
+	except Empty as err:
+		pass
+	except Exception as error:
+		err = f'{err}. {error}'
+		print(f'[File] Error while listening to queue: {error}')
+		
+	return (None, err)
 
-### Initial while-loop to start the program ###
-def wait_for_main(queue, timeout=15*60):
-	timeoutCounter = 0
-	startTime = time.time()
-	
-	onGoing = False
-	while not onGoing:
-		time.sleep(1)
-		timeoutCounter = (time.time() - startTime) 
-
-		if timeoutCounter > timeout:
-			raise Exception('Timeout from main process. (FileManager)')
-
-		try:
-			items = toIv.get_nowait()
-			# item[0] -> start
-			# item[1] -> num of elements
-			onGoing	= items[0]
-			file.create_dataset(items[1], nameofMeasurements)
-		except Empty as err:
-			pass
-
-def loop(ard_queue, gra_queue, boss_queue, file, iv_queue=None):
+def loop(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commErr):
 	### Saving data to file while-loop ###
 	print('[File] Starting listening.')
 	onGoing = True
 	while onGoing:
-		time.sleep(0.1)
-		try:
-			items = iv_queue.get_nowait()
-			# item[0] -> value to save
-			# item[1] -> index
-			# item[2] -> should stop
-			if items[0] is not None:
-				file.add_IV(items[0], items[1])
-				gra_queue.put([items[0][0], None, items[0][1], items[0][2], None, None, True])
+		# Run at ~100 Hz
+		time.sleep(1.0/100)
 
-			onGoing = items[2]
-		except Empty as err:
-			pass
-		except AttributeError:
-			# Error that gets executed if iv_queue is None
-			pass
-		except Exception as err:
-			print(err)
-
-		try:
-			items = ard_queue.get_nowait()
-			# item[0] -> value to save
-			# item[1] -> index
-			file.add_HT(items[0], items[1])
-			gra_queue.put([None, items[0][0], None, None, items[0][1], items[0][2], True])
-		except Empty as err:
-			pass
-		except Exception as err:
-			print('[File] %s' % err)
-
-		response = listen_to_boss(boss_queue)
-
+		#   BOSS LOOP  #
+		# Listens to CMD, parses the command, and sends it around.
+		response, commErr = listen_to_boss(queue=boss_queue, err=commErr)
 		if response is not None:
+
 			if response['process'] == Process.ARDUINO:
-				ard_queue.put(response)
-			elif response['process'] == Process.GRAPHER:
-				gra_queue.put(response)
+				if ardOutQueue is not None:
+					ardOutQueue.put(response)
 			elif response['process'] == Process.IV:
-				if iv_queue is not None:
-					iv_queue.put(response)
+				if ivOutQueue is not None:
+					ivOutQueue.put(response)
+			elif response['process'] == Process.GRAPHER:
+				graQueue.put(response)
 			elif response['process'] == Process.SECRETARY:
 				pass # What to do here
 			elif response['process'] == Process.ALL:
-				ard_queue.put(response)
-				gra_queue.put(response)
 
-				if iv_queue is not None:
-					iv_queue.put(response)
+				graQueue.put(response)
+				if ardOutQueue is not None:
+					ardOutQueue.put(response)
+				if ivOutQueue is not None:
+					ivOutQueue.put(response)
 
 			if response['close']:
-				print('[File] Closing everything.')
-				ard_queue.put(response)
-				gra_queue.put(response)
+				close(file, \
+					graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commErr)
+				# Only way to stop the while loop
+				onGoing = False
 
-				if iv_queue is not None:
-					iv_queue.put(response)
+			if response['cmd'] == 'restart':
+				commErr = restart(file, \
+					graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commErr) 
+		################
 
-				break
+		#   IV LOOP    #
+		items, commErr = listen_to_queue(queue=ivInQueue, err=commErr)
+		if items is not None:
+			if len(items) == 1:
+				commErr = f'{commErr}. IV equipment returned error: {items[0]}'
+			if len(items) == 2:
+				# item[0] -> value to save
+				# item[1] -> index
+				file.add_IV(items[0], items[1])
+				graQueue.put([items[0][0], None, items[0][1], items[0][2], None, None])
+		################
 
-def file_process_main(ard_queue, gra_queue, boss_queue, iv_queue=None):
+		# ARDUINO LOOP #
+		items, commErr = listen_to_queue(queue=ardInQueue, err=commErr)
+		if items is not None:
+			if len(items) == 1:
+				commErr = f'{commErr}. Arduino returned error: {items[0]}'
+			elif len(items) == 2:
+				# item[0] -> value to save
+				# item[1] -> index
+				file.add_HT(items[0], items[1])
+				graQueue.put([None, items[0][0], None, None, items[0][1], items[0][2]])
+		################
+
+
+
+# Sends a command and listens for a reply.
+def send_and_listen(cmd, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commErr):
+	if ardOutQueue is not None:
+		ardOutQueue.put(closeResponse)
+
+		try:
+			response = ardInQueue.get(timeout=15)
+			if response is not None:
+				if len(response) == 1:
+					commErr = f'{commErr}. {response[0]}'
+
+		except Empty:
+			commErr = f'{commErr}. Arduino did not return a response'
+		except Exception as err:
+			commErr = f'{commErr}. {err}'
+			print(f'[File] Error while listening to Arduino: {err}.')
+
+	if ivOutQueue is not None:
+		ivOutQueue.put(closeResponse)
+
+		try:
+			response = ivInQueue.get(timeout=15)
+			if response is not None:
+				if len(response) == 1:
+					commErr = f'{commErr}. {response[0]}'
+
+		except Empty:
+			commErr = f'{commErr}. IV Equipment did not return a response'
+		except Exception as err:
+			commErr = f'{commErr}. {err}'
+			print(f'[File] Error while listening to IV Equipment: {err}.')
+
+	if graQueue is not None:
+		graQueue.put(closeResponse)
+
+	return commErr
+
+def close(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commErr):
+	print('[File] Closing everything.')
+
+	closeResponse = {'process': Process.ALL, 'close' : True, 'cmd' : 'close', 'value': ''}
+
+	commErr = send_and_listen(closeResponse, \
+		graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commErr)
+
+	# Finally, add any errors that were
+	# present in the run.
+	if file is not None:
+		file.add_attribute('Error', commErr)
+
+	return commErr
+
+def restart(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commErr):
+	print('[File] Restarting everything.')
+
+	restartResponse = {'process': Process.ALL, 'close' : False, 'cmd' : 'restart', 'value': ''}
+
+	# Save error to file.
+	if file is not None:
+		file.add_attribute('Error', commErr)
+
+	# Reset the error as it was saved to previous 'run'
+	commErr = ''
+	commErr = send_and_listen(restartResponse, \
+		graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commErr)
+
+	# 'resets' file but in reality it starts another run.
+	if file is not None:
+		file.reset()
+
+	return commErr
+
+def file_process_main(*, bossQueue, graQueue, ardOutQueue=None, ardInQueue=None, ivOutQueue=None, ivInQueue=None):
 	file = None
+	commulativeError = ''
 
 	# Only three config for now. Database name, file name and comment
 	# Maybe expand to include number of data points, time, etc
@@ -156,19 +245,21 @@ def file_process_main(ard_queue, gra_queue, boss_queue, iv_queue=None):
 		file.create_dataset(name_of_measurements)
 		file.add_attribute('Comment', comment)
 
-		# This part might be deprecated soon keeping it for now
-		# if toIV is not None:
-		# 	print('[File] This should not happen')
-		# 	wait_for_main(toIv)
-		# else:
-		# 	print('[File] No I-V process detected. Going to loop.')
-		print('[File] No I-V process detected. Going to loop.')
-		loop(ard_queue, gra_queue, boss_queue, file, iv_queue=iv_queue)
+		loop(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commulativeError)
 		
 	except Exception as err:
 		print('[File] Error with the file manager. Deleting previous data base.')
-		print('[File] error: %s' % err)
-		file.delete_dataset()
+		print(f'[File] error: {err}')
+		commulativeError = f'{commulativeError}. {err}'
+		
+		# If the file broke the error will not be saved.
+		# In fact, nothing will.
+		close(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commulativeError)
+
+		if file is not None:
+			file.delete_dataset()
+			
+			
 	finally:
 		if file is not None:
 			file.close()

@@ -102,11 +102,3 @@ class SCPI_port(serial.Serial):
 		ESR = int(ESR.decode('ASCII'))
 
 		return ESR
-
-
-
-# times = b'2\n'
-
-# times = int(times.decode('ASCII'))
-
-# print(times & 1)
