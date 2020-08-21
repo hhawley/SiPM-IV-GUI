@@ -80,7 +80,7 @@ class sipmFileManager:
 
 	def reset(self):
 		print('[File] Resetting database.')
-		create_dataset(self.database_name)
+		self.create_dataset(self.database_name)
 
 	def close(self):
 		self.file.close()

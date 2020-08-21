@@ -62,6 +62,10 @@ def run_measurements(state, total, man, outQueue, err):
 
 		total = total + 1
 
+		error = man.retrieveError()
+		if error is not None:
+			return (True, STATES.STANDBY, err)
+
 		return (True, STATES.RUNNING, err)
 	except Exception as error:
 		print(f'[Arduino] Error while running measurements {error}.')
@@ -77,7 +81,6 @@ def listen_to_Boss(state, man, inQueue, outQueue, err):
 
 		if response['close']:
 			print('[Arduino] Closing.')
-			inQueue.task_done()
 			return (False, STATES.STANDBY, err)
 		
 		elif response['cmd'] == 'setTemperature':
@@ -103,8 +106,6 @@ def listen_to_Boss(state, man, inQueue, outQueue, err):
 				# Waits until secretary finishes processing
 				# outQueue.join()
 				err = ''
-
-		inQueue.task_done()
 
 		return (True, outState, err)
 
@@ -176,7 +177,7 @@ def arduino_process_main(*, inQueue, outQueue):
 	# If the arduinoer is closed in any way, send all errors (if any)
 	# and open resources
 	finally:
-		toFile.put([commulativeError])
+		outQueue.put([commulativeError])
 
 		if arduinoManager is not None:
 			# Stop cooling if program is stopped in any way

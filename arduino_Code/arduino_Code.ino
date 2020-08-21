@@ -39,7 +39,7 @@ float ina219Reading_mA = 1000;
 float extMeterReading_mA = 1004;
 
 double desired_curr = MAX_CURR;
-double desired_temp = 20;
+double desired_temp = 10;
 double latest_curr = 0;
 double latest_volt = 0;
 double latest_humi = 0.0;
@@ -50,7 +50,7 @@ double latest_temp = 20.0;
 // High, 300ma and up, current PID values
 double Kp=0, Ki=1, Kd=0.02;
 
-double T_Kp = -1000, T_Ki = -1, T_Kd=0;
+double T_Kp = -700, T_Ki = -10, T_Kd=-20;
 
 // Replace desired_curr with desired_temp
 // and latest_curr with latest_temp
@@ -103,7 +103,7 @@ bool errorCheck() {
 
   // RTD error checking
   // Fault is a 8 bits error
-  uint16_t fault = (uint16_t)thermo.readFault();
+  uint8_t fault = thermo.readFault();
   *STATUS_FLAG &= 0xFF00; // Reset RTD error bits
   *STATUS_FLAG |= ( fault & 0x00FF);
 
@@ -111,7 +111,7 @@ bool errorCheck() {
     thermo.clearFault(); 
   }
 
-  dac_err = DAC.check_mcp4725() & 0xFFFE; // Trust nobody...
+  dac_err = DAC.check_mcp4725(); // Trust nobody...
 
   *STATUS_FLAG |= (dac_err << 8);
   *STATUS_FLAG |= (dht_err << 9);
@@ -135,9 +135,8 @@ void setup() {
   // Initialize serial variables to default values
   *COMMAND_REGISTER = 0x0000;
   *CURR_TEMP_REGISTER = 0x0000;
-  *DESI_TEMP_REGISTER = TEMP_TO_UINT(20);
+  *DESI_TEMP_REGISTER = TEMP_TO_UINT(desired_temp);
   *STATUS_FLAG = 0x0000;
-  desired_temp = uint_to_temp(*DESI_TEMP_REGISTER);
 
   // Sensors initialization
   dht.begin();

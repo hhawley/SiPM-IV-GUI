@@ -32,6 +32,8 @@ def loop(queue):
 			print('[Boss] Closing everything.')
 			break
 
+		time.sleep(1.0/1000)
+
 def read_config():
 	config = configparser.ConfigParser()
 
@@ -53,7 +55,7 @@ def main():
 
 		# Arduino code that measures the humidity/temperature measurements
 		humtemp_process = Process(target=arduino_process_main, \
-			kwargs={'inQueue' : ardInQueue, 'outQueue' : ardOutQueue})
+			kwargs={'inQueue' : ardOutQueue, 'outQueue' : ardInQueue })
 
 		# Secretary (file Manager)
 		file_process = Process(target=file_process_main, \

@@ -66,7 +66,7 @@ def listen_to_boss(*, queue, err):
 		return (response, err)
 		
 	except Empty as error:
-		return None
+		return (None, err)
 	except Exception as error:
 		err = f'{err}. {error}'
 		print(f'[File] Error while listening to cmd: {error}')
@@ -79,13 +79,12 @@ def listen_to_queue(*, queue, err):
 	try:
 		items = queue.get_nowait()
 		return (items, err)
-	except Empty as err:
-		pass
+	except Empty as error:
+		return (None, err)
 	except Exception as error:
 		err = f'{err}. {error}'
-		print(f'[File] Error while listening to queue: {error}')
-		
-	return (None, err)
+		print(f'[File] Error while listening to queue: {error}')	
+		return (None, err)
 
 def loop(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commErr):
 	### Saving data to file while-loop ###
@@ -97,7 +96,7 @@ def loop(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQue
 
 		#   BOSS LOOP  #
 		# Listens to CMD, parses the command, and sends it around.
-		response, commErr = listen_to_boss(queue=boss_queue, err=commErr)
+		response, commErr = listen_to_boss(queue=bossQueue, err=commErr)
 		if response is not None:
 
 			if response['process'] == Process.ARDUINO:
@@ -158,7 +157,7 @@ def loop(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQue
 # Sends a command and listens for a reply.
 def send_and_listen(cmd, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commErr):
 	if ardOutQueue is not None:
-		ardOutQueue.put(closeResponse)
+		ardOutQueue.put(cmd)
 
 		try:
 			response = ardInQueue.get(timeout=15)
@@ -173,7 +172,7 @@ def send_and_listen(cmd, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueu
 			print(f'[File] Error while listening to Arduino: {err}.')
 
 	if ivOutQueue is not None:
-		ivOutQueue.put(closeResponse)
+		ivOutQueue.put(cmd)
 
 		try:
 			response = ivInQueue.get(timeout=15)
@@ -188,7 +187,7 @@ def send_and_listen(cmd, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueu
 			print(f'[File] Error while listening to IV Equipment: {err}.')
 
 	if graQueue is not None:
-		graQueue.put(closeResponse)
+		graQueue.put(cmd)
 
 	return commErr
 

@@ -172,8 +172,12 @@ class sipmArduino:
 		error = self.m_read()
 
 		if error != '\r\n':
-			print('[Arduino] Arduino returned with an error = %s' % error)
-			return error
+			error = int(error)
+			if error != 0 and error != 2048:
+				print(f'[Arduino] returned with an error = {error}')
+				return f'Arduino returned with an error = {error}'
+			else:
+				return None
 		else:
 			raise Exception('Arduino returned an empty string in retrieveError().')
 
