@@ -1,4 +1,4 @@
-from sipm_files import FileManager
+from Managers import FileManager
 
 from multiprocessing import Process, Queue
 from queue import Empty
@@ -8,8 +8,7 @@ import time
 import configparser
 import os
 
-# Secretary is meants as a main hub
-# for the entire software.
+# Secretary is meants as a main hub for the entire software.
 # It mediates communication between the processes.
 # 
 # Commands between processes are lists, not strings.
@@ -45,8 +44,8 @@ class Process(Enum):
 # 3) Three words. Same as two words command with the
 # addition of a value parameter. Ex. "ARDUINO setTemperature 10"
 def listen_to_boss(*, queue, err):
-
-	response = {'process': Process.NONE, 'close' : False, 'cmd' : '', 'value': ''}
+	response = {'process': Process.NONE, 'close' : False, \
+		'cmd' : '', 'value': ''}
 
 	try:
 		cmd = queue.get_nowait()
@@ -86,10 +85,20 @@ def listen_to_queue(*, queue, err):
 		print(f'[File] Error while listening to queue: {error}')	
 		return (None, err)
 
-def loop(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commErr):
+def loop(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, \
+	ivInQueue, commErr):
 	### Saving data to file while-loop ###
 	print('[File] Starting listening.')
 	onGoing = True
+	isRunning = False
+
+	# Loop config bits
+	config = read_config()
+	
+	endRunByTime = config.getboolean('EndRunTimeCondition')
+	startTime = time.time()
+	endTime = float(config['EndRunTime'])
+
 	while onGoing:
 		# Run at ~100 Hz
 		time.sleep(1.0/100)
@@ -110,7 +119,6 @@ def loop(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQue
 			elif response['process'] == Process.SECRETARY:
 				pass # What to do here
 			elif response['process'] == Process.ALL:
-
 				graQueue.put(response)
 				if ardOutQueue is not None:
 					ardOutQueue.put(response)
@@ -119,13 +127,27 @@ def loop(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQue
 
 			if response['close']:
 				close(file, \
-					graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commErr)
+					graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, \
+						ivInQueue, commErr)
 				# Only way to stop the while loop
 				onGoing = False
 
+			# Other commands
 			if response['cmd'] == 'restart':
 				commErr = restart(file, \
-					graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commErr) 
+					graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, \
+						ivInQueue, commErr)
+			elif response['cmd'] == 'run':
+				isRunning = True
+
+				runCMD = {'process': Process.ALL, 'close' : False, \
+				'cmd' : 'setState', 'value': 'RUNNING'}
+				if ardOutQueue is not None:
+					ardOutQueue.put(runCMD)
+
+				if ivOutQueue is not None:
+					ivOutQueue.put(runCMD)
+
 		################
 
 		#   IV LOOP    #
@@ -147,12 +169,27 @@ def loop(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQue
 				commErr = f'{commErr}. Arduino returned error: {items[0]}'
 			elif len(items) == 2:
 				# item[0] -> value to save
-				# item[1] -> index
-				file.add_HT(items[0], items[1])
+				# item[1] -> nothing really
+				file.add_HT(items[0])
 				graQueue.put([None, items[0][0], None, None, items[0][1], items[0][2]])
 		################
 
+		# RUNNING LOOP #
+		if isRunning:
+			if endRunByTime:
+				runTime = (time.time() - startTime)
 
+				if runTime > endTime:
+					isRunning = False
+
+					runCMD = {'process': Process.ALL, 'close' : False, \
+						'cmd' : 'setState', 'value': 'STANDBY'}
+					if ardOutQueue is not None:
+						ardOutQueue.put(runCMD)
+
+					if ivOutQueue is not None:
+						ivOutQueue.put(runCMD)
+		################
 
 # Sends a command and listens for a reply.
 def send_and_listen(cmd, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, ivInQueue, commErr):

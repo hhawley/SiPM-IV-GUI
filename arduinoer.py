@@ -1,4 +1,4 @@
-from sipm_files import ArduinoManager
+from Managers import ArduinoManager
 
 from multiprocessing import Process, Queue
 from queue import Empty
@@ -40,6 +40,7 @@ class STATES(Enum):
 	STANDBY=0
 	RUNNING=1
 	INIT_RUNNING=2
+	END_RUNNING=3
 
 def read_config():
 	config = configparser.ConfigParser()
@@ -49,7 +50,7 @@ def read_config():
 
 	return config['Peltier']
 
-def run_measurements(state, total, man, outQueue, err):
+def run_measurements(state, man, outQueue, err):
 	try:
 
 		man.initMeasurement()
@@ -58,19 +59,17 @@ def run_measurements(state, total, man, outQueue, err):
 		time.sleep(2)
 
 		vals = man.retrieveMeasurements()
-		outQueue.put([vals, total])
-
-		total = total + 1
+		outQueue.put([vals, 0])
 
 		error = man.retrieveError()
 		if error is not None:
-			return (True, STATES.STANDBY, err)
+			return (True, STATES.END_RUNNING, err)
 
 		return (True, STATES.RUNNING, err)
 	except Exception as error:
 		print(f'[Arduino] Error while running measurements {error}.')
 		err = f'{err}. {error}'
-		return (True, STATES.STANDBY, err)
+		return (True, STATES.END_RUNNING, err)
 
 # Listens to command from the boss (you)
 def listen_to_Boss(state, man, inQueue, outQueue, err):
@@ -81,7 +80,7 @@ def listen_to_Boss(state, man, inQueue, outQueue, err):
 
 		if response['close']:
 			print('[Arduino] Closing.')
-			return (False, STATES.STANDBY, err)
+			return (False, STATES.END_RUNNING, err)
 		
 		elif response['cmd'] == 'setTemperature':
 			man.setTemperature(float(response['value']))
@@ -91,9 +90,13 @@ def listen_to_Boss(state, man, inQueue, outQueue, err):
 			if response['value'] == 'RUNNING' and err == '':
 				print(f'[Arduino] Changing to { response["value"] }')
 				outState = STATES.INIT_RUNNING
+			elif response['value'] == 'MEASUREMENTS_ONLY':
+				print(f'[Arduino] Changing to { response["value"] }')
+				# Skips INIT_RUNNING state to avoid turning on the peltier
+				outState = STATES.RUNNING
 			elif response['value'] == 'STANDBY':
 				print(f'[Arduino] Changing to { response["value"] }')
-				outState = STATES.STANDBY
+				outState = STATES.END_RUNNING
 
 		# Retrieves errors, send to secretary, and resets them
 		# only possible in standby mode
@@ -114,29 +117,37 @@ def listen_to_Boss(state, man, inQueue, outQueue, err):
 	except Exception as error:
 		print(f'[Arduino] Error while listening to boss: {error}')
 		err = f'{err}. {error}'
-		return (True, STATES.STANDBY, err)
+		return (True, STATES.END_RUNNING, err)
 
 
 # Main loop of this process. Similar to Arduino loop, get it?
 def loop(man, inQueue, outQueue, commErr):
-	total = 0
 	onGoing = True
 	status = True
 	state = STATES.STANDBY
 
-	while onGoing:
+	configs = read_config()
+	desiredTemperature = float(configs['Temperature'])
 
-		if state == STATES.RUNNING:
-			status, state, commErr = run_measurements(state, total, man, outQueue, commErr)
-			onGoing = (onGoing and status)
-		elif state == STATES.INIT_RUNNING:
-			man.startCooling()
-			state = STATES.RUNNING
+	while onGoing:
 
 		# Only stops if boss says so
 		# and ALWAYS listens to you ;)
 		status, state, commErr = listen_to_Boss(state, man, inQueue, outQueue, commErr)
 		onGoing = (onGoing and status)
+
+		if state == STATES.RUNNING:
+			status, state, commErr = run_measurements(state, man, outQueue, commErr)
+			onGoing = (onGoing and status)
+		elif state == STATES.INIT_RUNNING:
+			man.setTemperature(desiredTemperature)
+			man.startCooling()
+			state = STATES.RUNNING
+		elif state == STATES.END_RUNNING:
+			man.stopCooling()
+			state = STATES.STANDBY
+
+
 
 		# Running at 100 Hz
 		time.sleep(1.0/100)
@@ -157,7 +168,7 @@ def arduino_process_main(*, inQueue, outQueue):
 	commulativeError = ''
 
 	configs = read_config()
-	temperature = float(configs['Temperature'])
+	
 
 	try:
 		print('[Arduino] Initializing Arduino.')

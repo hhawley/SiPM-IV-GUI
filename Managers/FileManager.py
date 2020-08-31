@@ -8,15 +8,17 @@ class sipmFileManager:
 	def __init__(self, filedir):
 		self.filedir = filedir
 		self.database_name = ''
+		self.HTsize = 0
+		self.IVsize = 0
 
 		if os.path.isfile(filedir):
 			print('[File] Opening database %s in append mode' % filedir)
-			self.file = h5py.File(filedir, 'a', libver='latest')
+			self.file = h5py.File(filedir, 'a', libver='earliest')
 			self.sipm_group = self.file['SiPMs Measurements']
 
 		else:
 			print('[File] Database does not exist. Creating...')
-			self.file = h5py.File(filedir, 'w', libver='latest')
+			self.file = h5py.File(filedir, 'w', libver='earliest')
 			self.sipm_group = self.file.create_group('SiPMs Measurements')
 
 		# self.file.swmr_mode = True
@@ -53,6 +55,7 @@ class sipmFileManager:
 
 	def create_dataset(self, dbName, n=1):
 		self.database_name = dbName
+		self.IVsize = n
 		print('[File] Creating group with name %s' % dbName)
 
 		# Trying to create file with this name.
@@ -70,13 +73,15 @@ class sipmFileManager:
 		self.IV_measurements = self.curr_meas.create_dataset('%s_IV' % self.database_name, (n, 3), maxshape=(None, 3))
 		self.HT_measurements = self.curr_meas.create_dataset('%s_HT' % self.database_name, (1, 3), maxshape=(None, 3))
 
-	def add_IV(self, meas, i):
-		self.IV_measurements.resize((i+1,3))
-		self.IV_measurements[i] = meas
+	def add_IV(self, meas):
+		self.IVsize = self.IVsize + 1
+		self.IV_measurements.resize((self.IVsize,3))
+		self.IV_measurements[self.IVsize - 1] = meas
 
-	def add_HT(self, meas, i):
-		self.HT_measurements.resize((i+1,3))
-		self.HT_measurements[i] = meas
+	def add_HT(self, meas):
+		self.HTsize = self.HTsize + 1
+		self.HT_measurements.resize((self.HTsize,3))
+		self.HT_measurements[self.HTsize - 1] = meas
 
 	def reset(self):
 		print('[File] Resetting database.')

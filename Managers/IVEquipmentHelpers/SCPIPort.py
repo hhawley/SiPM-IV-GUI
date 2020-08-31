@@ -4,7 +4,7 @@ import time
 # My own serial port manager that uses the progologix ver 6.X
 # GPIB to USB converter and assumed that the
 # Keithley 487 and a HP 34401A are connected
-class SCPI_port(serial.Serial):
+class SCPIPort(serial.Serial):
 	def __init__(self, \
 		port=None, baudrate=9600, bytesize=serial.EIGHTBITS, \
 		parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE, \
@@ -16,20 +16,20 @@ class SCPI_port(serial.Serial):
 			inter_byte_timeout)
 
 
-	def format_cmd(self, cmd):
+	def FormatCMD(self, cmd):
 		return (cmd + '\n').encode()
 
-	def scpi_write(self, cmd):
-		self.write(self.format_cmd(cmd))
+	def SCPIWrite(self, cmd):
+		self.write(self.FormatCMD(cmd))
 
 	# The Keithley 487 is old and has different standards...
-	def wait_cmd_done_487(self, timeout=5):
+	def Wait487CommandDone(self, timeout=5):
 		srq = False
 		startTime = time.time()
 		timeoutCounter = 0.0
 
-		# self.scpi_write('M16X')
-		# self.scpi_write('++srq')
+		# self.SCPIWrite('M16X')
+		# self.SCPIWrite('++srq')
 		# s = self.readline()
 
 		# print('Starting the wait for cmd')
@@ -37,7 +37,7 @@ class SCPI_port(serial.Serial):
 			self.reset_input_buffer()
 
 		while not (srq or timeoutCounter > timeout): 
-			self.scpi_write('++srq')
+			self.SCPIWrite('++srq')
 			srq = self.readline()
 			
 			srq = srq.decode('ASCII') == '1\r\n'
@@ -50,25 +50,27 @@ class SCPI_port(serial.Serial):
 		return srq
 
 
-	def wait_cmd_done(self):
-		self.scpi_write('*OPC?')
+	def WaitCMDDone(self):
+		self.SCPIWrite('*OPC?')
 		s = self.readline()
 
 		status = (s.decode('ASCII') == '1\n')
 
 		return status
 
-	def wait_long_cmd(self, timeout=30):
+	# This is a confirmation of command that does not block.
+	# works only for the Keitheley.
+	def WaitLongCommand(self, timeout=30):
 		esr = False
 		startTime = time.time()
 		timeoutCounter = 0.0
 
-		self.scpi_write('*CLS')
-		self.scpi_write('*OPC')
+		self.SCPIWrite('*CLS')
+		self.SCPIWrite('*OPC')
 		# self.flush()
 
 		while not (esr or timeoutCounter > timeout): 
-			self.scpi_write('*ESR?')
+			self.SCPIWrite('*ESR?')
 			esr = self.readline()
 			esr = int(s.decode('ASCII')) & 1
 
@@ -78,25 +80,25 @@ class SCPI_port(serial.Serial):
 
 		return esr or (timeoutCounter < timeout)
 
-	# HP 34401A Addr
-	def set_to_DMM(self):
-		self.scpi_write('++addr 1')
+	# Sets the GPIB address (HP 34401A Addr = 1)
+	def SetTo34401A(self):
+		self.SCPIWrite('++addr 1')
 		# self.flush()
 
 		# So THIS was the reason it was taking too long!
-		#self.wait_cmd_done()
+		#self.WaitCommandDone()
 
-	# Keithley 487
-	def set_to_pico(self):
-		self.scpi_write('++addr 22')
+	# Sets the GPIB address (Keithley 487 Addr = 22)
+	def SetToPicoammter(self):
+		self.SCPIWrite('++addr 22')
 		# self.flush()
 
 		# So THIS was the reason it was taking too long!
-		# self.wait_cmd_done_487()
+		# self.Wait487CommandDone()
 
 	# TODO: not really needed in the near future
 	def read_esr(self):
-		self.scpi_write('*ESR?')
+		self.SCPIWrite('*ESR?')
 
 		ESR = self.readline()
 		ESR = int(ESR.decode('ASCII'))
