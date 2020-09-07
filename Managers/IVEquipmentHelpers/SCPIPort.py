@@ -15,6 +15,8 @@ class SCPIPort(serial.Serial):
 			timeout, xonxoff, rtscts, write_timeout, dsrdtr,
 			inter_byte_timeout)
 
+		self.currentDevice = 'NONE'
+
 
 	def FormatCMD(self, cmd):
 		return (cmd + '\n').encode()
@@ -82,7 +84,10 @@ class SCPIPort(serial.Serial):
 
 	# Sets the GPIB address (HP 34401A Addr = 1)
 	def SetTo34401A(self):
-		self.SCPIWrite('++addr 1')
+
+		if self.currentDevice != '1':
+			self.SCPIWrite('++addr 1')
+			self.currentDevice = '1'
 		# self.flush()
 
 		# So THIS was the reason it was taking too long!
@@ -90,7 +95,9 @@ class SCPIPort(serial.Serial):
 
 	# Sets the GPIB address (Keithley 487 Addr = 22)
 	def SetToPicoammter(self):
-		self.SCPIWrite('++addr 22')
+		if self.currentDevice != '22':
+			self.SCPIWrite('++addr 22')
+			self.currentDevice = '22'
 		# self.flush()
 
 		# So THIS was the reason it was taking too long!

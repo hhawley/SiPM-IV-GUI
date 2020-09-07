@@ -18,7 +18,7 @@
 #include "config.h"
 
 // Program states
-enum STATES{STANDBY, RUNNING} state;
+enum STATES{STANDBY=0, RUNNING=1} state;
 
 // DAC controls the current
 bool dac_err = false;
@@ -111,14 +111,13 @@ bool errorCheck() {
     thermo.clearFault(); 
   }
 
-  dac_err = DAC.check_mcp4725(); // Trust nobody...
-
-  *STATUS_FLAG |= (dac_err << 8);
-  *STATUS_FLAG |= (dht_err << 9);
-  *STATUS_FLAG |= (vt_err << 10);
+  dac_err = !DAC.check_mcp4725(); // Trust nobody...
+  bitWrite(*STATUS_FLAG, DAC_ERR_BIT, dac_err);
+  bitWrite(*STATUS_FLAG, DHT_ERR_BIT, dht_err);
+  bitWrite(*STATUS_FLAG, VT_ERR_BIT, vt_err);
 
   // Checks if any of the error bits are higher than 0
-  return (*STATUS_FLAG & 0x03FF) > 0;
+  return (*STATUS_FLAG & 0x07FF) > 0;
 }
 
 void setup() {
@@ -152,11 +151,17 @@ void setup() {
   // Initialize PID
   current_PID.setTimeStep(CURRENT_PID_REFRESH_RATE);
   temp_PID.setTimeStep(PERIOD_RATE);
-  
+
+  // Relay/Peltier Relay
+  pinMode(RELAY_PIN, OUTPUT);
+  digitalWrite(RELAY_PIN, LOW);
+
+
   delay(10);
 
   state = STANDBY;
-  *STATUS_FLAG |= ((state & 0xFFFE) << 11);
+  bitWrite(*STATUS_FLAG, STATUS_BIT, state);
+
 }
 
 
@@ -175,7 +180,7 @@ void listen() {
 
   if(bitRead(*COMMAND_REGISTER, READ_HUMIDIY_BIT)) {
      latest_humi = dht.readHumidity();
-     dht_err = (latest_humi == NAN) & 0xFFFE;
+     dht_err = (latest_humi == NAN);
 
      bitWrite(*COMMAND_REGISTER, READ_HUMIDIY_BIT, false);
   }
@@ -194,6 +199,9 @@ void listen() {
 void standby() {
   listen();
 
+  // Make sure relay is always off in standby
+  digitalWrite(RELAY_PIN, LOW);
+
   latest_temp = thermo.temperature(RNOMINAL, RREF);
   *CURR_TEMP_REGISTER = TEMP_TO_UINT(latest_temp);
 
@@ -201,14 +209,14 @@ void standby() {
   // is by being on standby and
   // asking to read it.
   if(bitRead(*COMMAND_REGISTER, RESET_ERROR_BIT)) {
-    STATUS_FLAG = 0x0000;
+    *STATUS_FLAG = 0x0000;
     bitWrite(*STATUS_FLAG, STATUS_BIT, state);
     bitWrite(*COMMAND_REGISTER, RESET_ERROR_BIT, false);
   }
 
   if(bitRead(*COMMAND_REGISTER, TOGGLE_STATE_BIT)) {
 
-    if(STATUS_FLAG > 0) {
+    if(*STATUS_FLAG == 0x0000) {
       state = RUNNING;
       bitWrite(*STATUS_FLAG, STATUS_BIT, state);
     }
@@ -223,6 +231,9 @@ void standby() {
 
 void run() {
   listen();
+
+  // Make sure relay is always on
+  digitalWrite(RELAY_PIN, HIGH);
 
   latest_temp = thermo.temperature(RNOMINAL, RREF);
   *CURR_TEMP_REGISTER = TEMP_TO_UINT(latest_temp);
@@ -260,6 +271,7 @@ void loop() {
     
     case RUNNING:
       run();
+      break;
     case STANDBY:
     default:
       standby();

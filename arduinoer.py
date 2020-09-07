@@ -19,7 +19,7 @@ from enum import Enum
 # the RUNNING state will start (or INIT_RUNNING). Any error that happens in 
 # RUNNING (or INIT_RUNNING) will revert the state back to STANDBY and will 
 # only allow to go back to RUNNING unless the errors are cleared by reseting
-# from the secretary.
+# them from a direct order coming from the secretary.
 #
 #			STANDBY -(if err = empty)-> INIT_RUNNING -> RUNNING
 #				^											| (if error)
@@ -35,6 +35,7 @@ from enum import Enum
 #					and starts the RUNNING state + all STANDBY functions
 # RUNNING 		:   Intitialize a humidity measurement, retrieves the H/T
 # 					measurement, and sends the data to the secretary + STANDBY
+# END_RUNNING	: 	Turns off the peltier, and changes to STANDBY
 
 class STATES(Enum):
 	STANDBY=0
@@ -63,6 +64,7 @@ def run_measurements(state, man, outQueue, err):
 
 		error = man.retrieveError()
 		if error is not None:
+			err = f'{err}. {error}'
 			return (True, STATES.END_RUNNING, err)
 
 		return (True, STATES.RUNNING, err)
@@ -148,7 +150,6 @@ def loop(man, inQueue, outQueue, commErr):
 			state = STATES.STANDBY
 
 
-
 		# Running at 100 Hz
 		time.sleep(1.0/100)
 
@@ -168,7 +169,6 @@ def arduino_process_main(*, inQueue, outQueue):
 	commulativeError = ''
 
 	configs = read_config()
-	
 
 	try:
 		print('[Arduino] Initializing Arduino.')

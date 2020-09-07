@@ -14,8 +14,8 @@ class ErrorHelper:
 	def TranslatePicoammeterStatus(self, err_in):
 		# In theory this should not happen but just adding normal checks
 		if(err_in == "4870000000000000"):
-			print("[IV Equipment] No error in the picoammeter!")
-			return ""
+			print('[IV Equipment] No error in the picoammeter!')
+			return ''
 
 		if len(err_in) != 16:
 			err_out = f'{err_out}. Error is not the correct size. Connection or timing \
@@ -102,8 +102,8 @@ class ErrorHelper:
 	def TranslatePicoammeterPSStatus(self, err_in):
 		# In theory this should not happen but just adding normal checks
 		if(err_in == '48700'):
-			print("[IV Equipment] No error in the picoammeter!")
-			return ""
+			print('[IV Equipment] No error in the picoammeter!')
+			return ''
 
 		if len(err_in) != 5:
 			err_out = f'{err_out}. Error is not the correct size. Connection or timing \
@@ -138,6 +138,7 @@ class ErrorHelper:
 	def CheckPicoammeterStatus(self):
 
 		# U1 = Send machine error status word
+		self.port.SetToPicoammter()
 		self.port.SCPIWrite('U1X')
 		487_error = self.port.readline()
 		487_error = 487_error.decode("ASCII")
@@ -154,6 +155,7 @@ class ErrorHelper:
 	# Returns (status, error)
 	def CheckPowerSupplyStatus(self):
 		# U9 = Power supply error status word
+		self.port.SetToPicoammter()
 		self.port.SCPIWrite('U9X')
 		487_error = self.port.readline()
 		487_error = 487_error.decode("ASCII")
@@ -167,6 +169,7 @@ class ErrorHelper:
 
 
 	def CheckDMMStatus(self):
+		self.port.SetTo34401A()
 		self.port.SCPIWrite('*ESR?')
 		response = self.port.readline().decode("ASCII")
 

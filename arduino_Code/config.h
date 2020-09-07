@@ -18,7 +18,7 @@
 #define RNOMINAL  100.0
 
 // PID temperature refresh rate (Hz)
-#define REFRESH_RATE 10
+#define REFRESH_RATE 20
 #define PERIOD_RATE 1000/REFRESH_RATE //ms 
 
 // PID current refresh time
@@ -27,3 +27,6 @@
 // DHT
 #define DHTPIN 2 
 #define DHTTYPE DHT22 
+
+// Relay/Peltier Relay
+#define RELAY_PIN 7

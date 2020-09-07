@@ -158,7 +158,7 @@ class sipmArduino:
 		if self.port.is_open:
 			running = self.retrieveStatus()
 
-			if not running:
+			if running:
 				self.m_write('{0,W,4}')
 				self.verify_write()
 
