@@ -2,19 +2,12 @@ import serial
 import time
 import dependencies.redpitaya_scpi as scpi
 
-from sipm_files.sipm_err import checkPicoAmmeterStatus, checkPicoammeterPS_status
-
-#For Windows:
-portName = "COM3"
-gpib_usb_controller = ""
-rp_ip = '192.168.128.1' # pitaya IP
-rp_s = ""
 
 # Helps managing all the setup for all the IV-Equipment
 # Does not manage the ports or anything else.
 
 class SetupHelper():
-	def __init__(errorhelper):
+	def __init__(self, errorhelper):
 		self.port = errorhelper.port
 		self.rpport = errorhelper.rpport
 		self.errorhelper = errorhelper
@@ -24,7 +17,7 @@ class SetupHelper():
 	# GPIB controller is a device that translated the GPIB to USB.
 	# It is currently connected to the picoammeter and DMM
 	def SetupGPIBController(self):
-		print('[IV Equipment] Performing GPIB controller setup...')
+		print('[Electrometer] Performing GPIB controller setup...')
 		self.port.SCPIWrite('++rst')
 		# Should not be doing this... but no opc command
 		time.sleep(5) 
@@ -39,9 +32,9 @@ class SetupHelper():
 			self.port.SCPIWrite('++ver') 
 			s = self.port.readline()
 			s = s.decode('ASCII')
-			print(s.decode('ASCII'))
+			print(f'[Electrometer] GPIB ver = { s.decode("ASCII") }.')
 
-		print('[IV Equipment] Done with GPIB controller setup!')
+		print('[Electrometer] Done with GPIB controller setup!')
 
 	# How the Keithley 487 commands work:
 	# A command is like the next:
@@ -52,17 +45,17 @@ class SetupHelper():
 	
 	# Raises an exception if failed.
 	def SetupPicoammeter(self, zeroCheck=False):
-		print('[IV Equipment] Performing 487 Picoammeter setup...')
+		print('[Electrometer] Performing 487 Picoammeter setup...')
 		self.port.SetToPicoammter()
 
 		self.port.SCPIWrite('M16X')
 		self.port.Wait487CommandDone()
 
-		print('[IV Equipment] Clearing device')
+		print('[Electrometer] Clearing device.')
 		self.port.SCPIWrite('++clr')
 		self.port.Wait487CommandDone()
 
-		print('[IV Equipment] Sending init config command')
+		print('[Electrometer] Sending init config command.')
 		## C2 = Enable zero check and perform zero correction (must be done for
 		## 		each range)
 		## G1 = ASCII readings without prefix
@@ -89,20 +82,20 @@ class SetupHelper():
 
 				if status:
 					range_str = f'R{i}X'
-					print(f"[IV Equipment] Zero checking for range {ranges[i]}")
+					print(f"[Electrometer] Zero checking for range {self.ranges[i]}")
 					self.port.SCPIWrite(range_str)
 					self.port.SCPIWrite('C2X')
 					# timeout is raised to 60 secs here as the zero correction can take a long time
 					# depending on the range
 					self.port.Wait487CommandDone(timeout=60)
 				else:
-					raise Exception(f'{error}. Zero check failed at range {ranges[i]}')
+					raise Exception(f'{error}. Zero check failed at range {self.ranges[i]}')
 
 			status, error = self.errorhelper.CheckPicoammeterStatus()
 			if status:
-				print("[IV Equipment] Picoammeter setup!")
+				print("[Electrometer] Picoammeter setup!")
 				# Return to 2nA after all the zero checking
-				self.port.SCPIWrite('R1X')
+				self.port.SCPIWrite('C0R1X')
 				self.port.Wait487CommandDone()
 			else:
 				raise Exception(f'{error}. Picoammeter status failed after all zero checks.')
@@ -112,7 +105,7 @@ class SetupHelper():
 				raise Exception(f'{error}. Failed at verify setup status')
 
 	def SetupPicoammeterPowerSupply(self):
-		print('[IV Equipment] Performing 487 Picoammeter Power Supply setup...')
+		print('[Electrometer] Performing 487 Picoammeter Power Supply setup...')
 		self.port.SetToPicoammter()
 
 		# Set Voltage to 0 volts, range 50V, 25uA max current
@@ -122,31 +115,27 @@ class SetupHelper():
 
 		self.port.Wait487CommandDone()
 
-		if checkPicoammeterPS_status(self.port):
-			print('[IV Equipment] Done with power supply setup!')
+		status, error = self.errorhelper.CheckPowerSupplyStatus()
+		if status:
+			print('[Electrometer] Done with power supply setup!')
 			return True
 		else:
-			raise Exception("Power supply status failed.")
+			raise Exception(f'Power supply status failed with error {error}.')
 
 	def SetupMultimeter(self):
-		print('[IV Equipment] Performing 34401A multimeter setup...')
+		print('[Electrometer] Performing 34401A multimeter setup...')
 		self.port.SetTo34401A()
 
-		print('[IV Equipment]: Clearing and reseting DMM.')
+		print('[Electrometer] Clearing and reseting DMM.')
+		# Set the GPIB controller to only talk for some commands.
+		self.port.SCPIWrite('++auto 0')
 		self.port.SCPIWrite('++clr')
 		# Set DMM in a known state
 		self.port.SCPIWrite('++rst')
 
-		self.port.WaitCMDDone()
-
-		self.port.SCPIWrite('*IDN?')
-		txt = self.port.readline()
-
-		print(f'[IV Equipment]: DMM ID: {txt}')
-
 		# No beeping PLEASE
 		# Stills fails, but minimizes beeping ;-;
-		self.port.SCPIWrite('SYSTem:BEEPer:STATe OFF')
+		self.port.SCPIWrite('SYST:BEEP:STAT OFF')
 		# Integration time 1 PLC
 		self.port.SCPIWrite('SENSE:VOLT:DC:NPLC 1')
 		# Set the range
@@ -155,16 +144,27 @@ class SetupHelper():
 		# No trigger delay
 		self.port.SCPIWrite('TRIG:DEL 0')
 		# Input impedance auto
-		self.port.flush()
-		self.port.WaitCMDDone()
 		# self.port.write(b'INP:IMP:AUTO ON\n')
-		print('[IV Equipment] Done with multimeter setup!')
+
+		# Wait for the commands to write, and then wait until they are
+		# executed.
+		self.port.flush()
+
+		# Turn on by default
+		self.port.SCPIWrite('++auto 1')
+		self.port.WaitCMDDone()
+		status, error = self.errorhelper.CheckDMMStatus()
+		if status:
+			print('[Electrometer] Done with multimeter setup!')
+		else:
+			raise Exception(f'Multimeter status failed with error: {error}.')
 
 
 	def SetupRedPitaya(self):
-		print('[IV Equipment] Performing red pitaya setup...')
+		print('[Electrometer] Performing red pitaya setup...')
 		#self.rpport = scpi.scpi(rp_ip)
 
+		self.rpport.cls()
 		self.rpport.rst()
 
 		# Pin 7_P is connected to the triggers.
@@ -173,7 +173,7 @@ class SetupHelper():
 		# We set it high as the trigger is executed at the falling time.
 		self.rpport.tx_txt('DIG:PIN DIO7_P,1')
 
-		print('[IV Equipment] Done with red pitaya setup!')
+		print('[Electrometer] Done with red pitaya setup!')
 
 
 	# def setup(self, zeroCheck=False):

@@ -150,11 +150,12 @@ class sipmArduino:
 		running = self.retrieveStatus()
 
 		if running:
-			print("[Arduino] stopped cooling.")
+			print("[Arduino] Stopped cooling.")
 			self.m_write('{0,W,4}')
 			self.verify_write()
 
 	def close(self):
+		print('[Arduino] Closing arduino port.')
 		if self.port.is_open:
 			running = self.retrieveStatus()
 

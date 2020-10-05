@@ -23,8 +23,10 @@ class VoltageSupplyHelper:
 		self.isON = state
 
 		if self.isON:
+			print('[Electrometer] Voltage supply is ON.')
 			self.port.SCPIWrite('O1X')
 		else:
+			print('[Electrometer] Voltage supply is OFF.')
 			self.port.SCPIWrite('O0X')
 
 		self.port.Wait487CommandDone()
@@ -57,17 +59,17 @@ class VoltageSupplyHelper:
 		if volt > self.maxVoltage:
 			err = f'Tried to set voltage higher than the maximum \
 			 allowed voltage {self.maxVoltage}'
-			print(f'[IV Equipment] {err}.')
+			print(f'[Electrometer] {err}.')
 			raise Exception(f'{err}')
 
 		if volt < self.minVoltage:
-			err = f'[IV Equipment] Tried to set voltage lower than the minimum \
+			err = f'[Electrometer] Tried to set voltage lower than the minimum \
 			allowed voltage {self.minVoltage}'
-			print(f'[IV Equipment] {err}.')
+			print(f'[Electrometer] {err}.')
 			raise Exception(f'{err}')
 
 		# Change voltimeter range if necessary
-		SetVoltageRange(volt)
+		self.SetVoltageRange(volt)
 
 		volt_s = ''
 		if volt == 0:
@@ -87,7 +89,7 @@ class VoltageSupplyHelper:
 
 		if volt_received == b'\r\n':
 			err = f'Failed retrieving the current voltage value'
-			print(f'[IV Equipment] {err}.')
+			print(f'[Electrometer] {err}.')
 			raise Exception(f'{err}')
 
 		# String comes as VS=[VALUE]V\r\n
@@ -106,8 +108,8 @@ class VoltageSupplyHelper:
 		v_plus = volt + error
 		if v_minus < volt_received and volt_received < v_plus:
 			self.currentValue = volt_received
-			print(f'[IV Equipment] Current output voltage is {self.currentValue}')
+			print(f'[Electrometer] Current output voltage is {self.currentValue}')
 		else:
 			err = f'Value read is not currently the set value'
-			print(f'[IV Equipment] {err}.')
+			print(f'[Electrometer] {err}.')
 			raise Exception(f'{err}')

@@ -113,6 +113,8 @@ def grapher_process_main(file_queue, humidity_only=False):
 	humidity_vals 	= []
 	temperature_vals= []
 
+	plt.style.use('ggplot')
+
 	if not humidity_only:
 		anim = FuncAnimation(plt.gcf(), animate_all, \
 			fargs=(file_queue, [time_vals, time2_vals, voltage_vals, current_vals, humidity_vals, temperature_vals]), \
@@ -120,7 +122,7 @@ def grapher_process_main(file_queue, humidity_only=False):
 	else:
 		anim = FuncAnimation(plt.gcf(), animate_humidity, \
 			fargs=(file_queue, [time_vals, time2_vals, voltage_vals, current_vals, humidity_vals, temperature_vals]), \
-			interval=1000)
+			interval=300)
 
 	plt.show()
 
@@ -134,7 +136,7 @@ def test_process(queue):
 def main():
 	q = Queue()
 
-	grap_p = Process(target=grapher_process, args=(q,))
+	grap_p = Process(target=grapher_process_main, args=(q,))
 	test_p = Process(target=test_process, args=(q,))
 
 	test_p.start()

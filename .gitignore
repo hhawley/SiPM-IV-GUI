@@ -1,5 +1,5 @@
-dependencies/
 __pycache__/
 sipm_project.*
 plotIV.py
 *.hdf5
+*.log

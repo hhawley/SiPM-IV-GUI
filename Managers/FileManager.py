@@ -91,5 +91,5 @@ class sipmFileManager:
 		self.file.close()
 
 	def delete_dataset(self):
-		if self.curr_meas:
-			del self.sipm_group[self.dbName]
+		if self.curr_meas and self.database_name is not None:
+			del self.sipm_group[self.database_name]
