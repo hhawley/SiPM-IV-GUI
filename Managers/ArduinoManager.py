@@ -141,7 +141,7 @@ class sipmArduino:
 		running = self.retrieveStatus()
 
 		if not running:
-			print("[Arduino] Starting cooling.")
+			print("[Arduino] Starting peltier.")
 			# COMMAND_REGISTER -> TOGGLE_STATE bit
 			self.m_write('{0,W,4}')
 			self.verify_write()
@@ -150,7 +150,7 @@ class sipmArduino:
 		running = self.retrieveStatus()
 
 		if running:
-			print("[Arduino] Stopped cooling.")
+			print("[Arduino] Stopped peltier.")
 			self.m_write('{0,W,4}')
 			self.verify_write()
 

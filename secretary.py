@@ -1,14 +1,16 @@
 from Managers import FileManager
 from Managers.LoggerManager import Logger
+from Managers.FileManager import Process
 
-from multiprocessing import Process, Queue
+from multiprocessing import Queue
 from queue import Empty
 from enum import Enum
 
 import time
 import configparser
 import os
-import sys
+
+import sys, traceback
 
 # Secretary is meants as a main hub for the entire software.
 # It mediates communication between the processes.
@@ -20,19 +22,10 @@ import sys
 def read_config():
 	config = configparser.ConfigParser()
 
-	with open('file.cfg') as f:
+	with open('test_file.cfg') as f:
 		config.read_file(f)
 
 	return config['FILE']
-
-# Processes enum
-class Process(Enum):
-	NONE = 1
-	ARDUINO = 2
-	GRAPHER = 3
-	IV = 4
-	SECRETARY = 5
-	ALL = 6
 
 # Read the the stdin/boss and prepares the data to be ran in the loop
 # Commands from the CMD are expected to have the 
@@ -133,11 +126,13 @@ def loop(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, \
 		# Listens to CMD, parses the command, and sends it around.
 		response, commErr = listen_to_boss(queue=bossQueue, err=commErr)
 
+		# If the command is specifically formatted, it will relay.
 		relay_message(response = response, queues = { \
 			'ArduinoOut' : ardOutQueue, \
 			'ElectrometerOut' : ivOutQueue, \
 			'Grapher' : graQueue })
 
+		# If commands are single words, we build the command.
 		if response is not None:
 			if response['close']:
 				close(file, \
@@ -182,17 +177,27 @@ def loop(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, \
 				if ivOutQueue is not None:
 					ivOutQueue.put(runCMD)
 
-			# Debug command to let the arduino know we are done with the
-			# measurements.
-			elif response['cmd'] == 'done':
+			elif response['cmd'] == 'next':
 				cmd = { \
-					'process'	: Process.ARDUINO, 	\
-					'close' 	: False, 			\
-					'cmd' 		: 'done', 			\
+					'process'	: Process.IV, 	\
+					'close' 	: False, 		\
+					'cmd' 		: 'next', 		\
 					'value'		: ''}
 
-				if ardOutQueue is not None:
-					ardOutQueue.put(cmd)
+				if ivOutQueue is not None:
+					ivOutQueue.put(cmd)
+
+			# # Debug command to let the arduino know we are done with the
+			# # measurements.
+			# elif response['cmd'] == 'done':
+			# 	cmd = { \
+			# 		'process'	: Process.ARDUINO, 	\
+			# 		'close' 	: False, 			\
+			# 		'cmd' 		: 'done', 			\
+			# 		'value'		: ''}
+
+			# 	if ardOutQueue is not None:
+			# 		ardOutQueue.put(cmd)
 
 
 		################
@@ -206,7 +211,7 @@ def loop(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, \
 				# data[0] = time
 				# data[1] = voltage
 				# data[2] = current
-				file.add_IV(data)
+				file.add_IV(data[0:3], numSiPM=data[3])
 				graQueue.put([data[0], None, data[1], data[2], None, None])
 
 			if items['Error'] is not None:
@@ -274,10 +279,10 @@ def send_and_listen(cmd, graQueue, bossQueue, ardOutQueue, ardInQueue, \
 		ardOutQueue.put(cmd)
 
 		try:
-			response = ardInQueue.get(timeout=5)
+			response = ardInQueue.get(timeout=10)
 			if response is not None:
 				if response['Error'] is not None:
-					commErr = f'{commErr} {response['Error']}'
+					commErr = f'{commErr} {response["Error"]}'
 
 		except Empty:
 			commErr = f'{commErr} Arduino did not return a response.'
@@ -289,10 +294,10 @@ def send_and_listen(cmd, graQueue, bossQueue, ardOutQueue, ardInQueue, \
 		ivOutQueue.put(cmd)
 
 		try:
-			response = ivInQueue.get(timeout=5)
+			response = ivInQueue.get(timeout=10)
 			if response is not None:
 				if response['Error'] is not None:
-					commErr = f'{commErr} {response['Error']}'
+					commErr = f'{commErr} {response["Error"]}'
 
 		except Empty:
 			commErr = f'{commErr} Electrometer did not return a response.'
@@ -305,7 +310,10 @@ def send_and_listen(cmd, graQueue, bossQueue, ardOutQueue, ardInQueue, \
 
 	return commErr
 
-# Sends a close command to all processes 
+# Important commands that needs their own function. #
+# Command -> 'close'
+# Send a command to retrieve all the cumulated errors, and close
+# all the processes.
 def close(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, \
 	ivInQueue, commErr):
 	print('[File] Closing everything.')
@@ -326,6 +334,9 @@ def close(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, \
 
 	return commErr
 
+# Command -> 'restart'
+# Restarts the software by cleaning the error, and opening a new database
+# under the same name as the last one.
 def restart(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, \
 	ivInQueue, commErr):
 	print('[File] Restarting everything.')
@@ -353,6 +364,8 @@ def restart(file, graQueue, bossQueue, ardOutQueue, ardInQueue, ivOutQueue, \
 
 	# Should be empty but we are keeping a standard.
 	return commErr
+######################################
+
 
 def file_process_main(*, bossQueue, graQueue, ardOutQueue=None, ardInQueue=None, \
 	ivOutQueue=None, ivInQueue=None):
@@ -369,11 +382,12 @@ def file_process_main(*, bossQueue, graQueue, ardOutQueue=None, ardInQueue=None,
 	db_name = configs['DBName']
 	name_of_measurements = configs['FileName']
 	comment = configs['Comment']
+	NUM_SIPMS = int(configs['NumSiPMsToTest'])
 
 	try:
 		# File creation/initialization
 		print('[File] Setting up database.')
-		file = FileManager.sipmFileManager(db_name)
+		file = FileManager.sipmFileManager(db_name, numSiPMs=NUM_SIPMS)
 		file.create_dataset(name_of_measurements)
 		file.add_attribute('Comment', comment)
 
@@ -395,6 +409,8 @@ def file_process_main(*, bossQueue, graQueue, ardOutQueue=None, ardInQueue=None,
 
 		if file is not None:
 			file.delete_dataset()
+
+		traceback.print_exc(file=sys.stdout)
 			
 	# Open resources.
 	finally:

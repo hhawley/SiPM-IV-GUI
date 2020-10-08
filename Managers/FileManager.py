@@ -2,23 +2,37 @@ import h5py
 import time
 import os
 import datetime
+from enum import Enum
+
+# Processes enum
+class Process(Enum):
+	NONE = 1
+	ARDUINO = 2
+	GRAPHER = 3
+	IV = 4
+	SECRETARY = 5
+	ALL = 6
 
 class sipmFileManager:
 
-	def __init__(self, filedir):
+	def __init__(self, filedir, numSiPMs = 1):
 		self.filedir = filedir
 		self.database_name = ''
 		self.HTsize = 0
 		self.IVsize = 0
+		self.TotalPreCooling = 0
+		self.TotalPostCooling = 0
+		self.NumSiPMs = numSiPMs
 
 		if os.path.isfile(filedir):
-			print('[File] Opening database %s in append mode' % filedir)
-			self.file = h5py.File(filedir, 'a', libver='earliest')
+			print(f'[File] Opening database {filedir} in append mode.')
+
+			self.file = h5py.File(filedir, 'a', libver='latest')
 			self.sipm_group = self.file['SiPMs Measurements']
 
 		else:
 			print('[File] Database does not exist. Creating...')
-			self.file = h5py.File(filedir, 'w', libver='earliest')
+			self.file = h5py.File(filedir, 'w', libver='latest')
 			self.sipm_group = self.file.create_group('SiPMs Measurements')
 
 		# self.file.swmr_mode = True
@@ -31,7 +45,9 @@ class sipmFileManager:
 		if self.curr_meas:
 			self.curr_meas.attrs[key] = value
 		
-		print('[File] Adding key \'%s\' with value \'%s\' to database' % (key, value))
+			print(f'[File] Adding key \'{key}\' with value \'{value}\' to database.')
+		else:
+			print(f'[File] Failed to add key \'{key}\' with value \'{value}\' to database.')
 
 	def rename_and_save(self, name):
 		no_problem = False
@@ -40,12 +56,12 @@ class sipmFileManager:
 		while not no_problem:
 			
 			# zfill adds zeroes to the left. Ex. 1 -> 01
-			new_name = '%s_%s' % (name, str(i).zfill(2))
+			new_name = f'{name}_{str(i).zfill(2)}'
 
 			try:
 				self.curr_meas = self.sipm_group.create_group(new_name)
 				self.database_name = new_name
-				print('[File] File renamed to %s' % new_name)
+				print(f'[File] File renamed to {new_name}.')
 
 				no_problem = True
 			except ValueError as err:
@@ -55,8 +71,8 @@ class sipmFileManager:
 
 	def create_dataset(self, dbName, n=1):
 		self.database_name = dbName
-		self.IVsize = n
-		print('[File] Creating group with name %s' % dbName)
+
+		print(f'[File] Creating group with name {dbName}.')
 
 		# Trying to create file with this name.
 		try:
@@ -68,18 +84,25 @@ class sipmFileManager:
 			self.rename_and_save(dbName)
 			
 		self.curr_meas.attrs['Date'] = datetime.datetime.fromtimestamp(time.time()).strftime('%Y-%m-%d %H:%M:%S')
-		self.curr_meas.attrs['Author'] = 'Hector Hawley Herrera'
+		self.curr_meas.attrs['Author'] = 'Queens SiPM Group'
 
-		self.IV_measurements = self.curr_meas.create_dataset('%s_IV' % self.database_name, (n, 3), maxshape=(None, 3))
-		self.HT_measurements = self.curr_meas.create_dataset('%s_HT' % self.database_name, (1, 3), maxshape=(None, 3))
+		# Create an array of IV measurements 1 item for each SiPM
+		self.IVsize = [n for i in range(1, self.NumSiPMs + 1)]
+		self.IV_measurements = [self.curr_meas.create_dataset(f'IV_{i}', (n, 3), maxshape=(None, 3)) \
+			for i in range(1, self.NumSiPMs + 1)]
 
-	def add_IV(self, meas):
-		self.IVsize = self.IVsize + 1
-		self.IV_measurements.resize((self.IVsize,3))
-		self.IV_measurements[self.IVsize - 1] = meas
+		# All the SiPMs share the HT measurements
+		self.HT_measurements = self.curr_meas.create_dataset('HT', (1, 3), maxshape=(None, 3))
+
+	def add_IV(self, meas, numSiPM=0):
+		self.IVsize[numSiPM] += 1
+		newSize = self.IVsize[numSiPM]
+
+		self.IV_measurements[numSiPM].resize((newSize, 3))
+		self.IV_measurements[numSiPM][ newSize - 1 ] = meas
 
 	def add_HT(self, meas):
-		self.HTsize = self.HTsize + 1
+		self.HTsize += 1
 		self.HT_measurements.resize((self.HTsize,3))
 		self.HT_measurements[self.HTsize - 1] = meas
 

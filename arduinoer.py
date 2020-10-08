@@ -1,7 +1,8 @@
 from Managers import ArduinoManager
 from Managers.LoggerManager import Logger
+from Managers.FileManager import Process
 
-from multiprocessing import Process, Queue
+from multiprocessing import Queue
 from queue import Empty
 
 import time
@@ -41,16 +42,6 @@ import sys, traceback
 # RUNNING 		:   Intitialize a humidity measurement, retrieves the H/T
 # 					measurement, and sends the data to the secretary + STANDBY
 # END_RUNNING	: 	Turns off the peltier, and changes to STANDBY
-
-# Processes enum
-class Process(Enum):
-	NONE = 1
-	ARDUINO = 2
-	GRAPHER = 3
-	IV = 4
-	SECRETARY = 5
-	ALL = 6
-
 class STATES(Enum):
 	STANDBY 			= 0
 	RUNNING 			= 1
@@ -67,7 +58,7 @@ class STATES(Enum):
 def read_config():
 	config = configparser.ConfigParser()
 
-	with open('file.cfg') as f:
+	with open('test_file.cfg') as f:
 		config.read_file(f)
 
 	return config['Peltier']
@@ -114,8 +105,8 @@ def run_measurements(*, status, err):
 		status['State'] = STATES.UNEXPECTED_END
 		return (status, err)
 
-# Listens to command from the boss (you)
-def listen_to_Boss(*, status, err):
+# Listen to the secretary commands
+def listen_to_secretary(*, status, err):
 	man = status['Manager']
 	inQueue = status['InQueue']
 	outQueue = status['OutQueue']
@@ -136,12 +127,7 @@ def listen_to_Boss(*, status, err):
 		# Running (which start by going to INIT_PRE_COOLING)
 		# and standby, which is required to go from setup
 		elif response['cmd'] == 'setState':
-			if response['value'] == 'RUNNING' and err == '':
-				print(f'[Arduino] Changing to { response["value"] }.')
-				status['State'] = STATES.INIT_PRE_COOLING
-
-			elif response['value'] == 'STANDBY':
-				print(f'[Arduino] Changing to { response["value"] }.')
+			if response['value'] == 'STANDBY':
 				status['State'] = STATES.UNEXPECTED_END
 
 		# Retrieves errors, send to secretary, and resets them
@@ -169,7 +155,15 @@ def listen_to_Boss(*, status, err):
 
 				err = ''
 
-		elif response['cmd'] == 'done':
+		# Commands that start with _ are commands that are not ment to be sent
+		# by the user, only by other pieces of the software
+		# Command -> '_donePreCoolingSiPMs'
+		# The electrometer is done with all the SiPM pre-cooling measurements.
+		elif response['cmd'] == '_donePreCoolingSiPMs':
+			status['State'] = STATES.INIT_PRE_COOLING
+		# Command -> '_doneMeasuringSiPMs'
+		# The electrometer is done with all the SiPM I-V measurements.
+		elif response['cmd'] == '_doneMeasuringSiPMs':
 			status['State'] = STATES.INIT_POST_COOLING
 
 		return (status, err)
@@ -178,6 +172,7 @@ def listen_to_Boss(*, status, err):
 		return (status, err)
 	except Exception as error:
 		print(f'[Arduino] Error while listening to boss: {error}.')
+		traceback.print_exc(file=sys.stdout)
 		err = f'{err} {error}.'
 		status['State'] = STATES.UNEXPECTED_END
 
@@ -186,16 +181,18 @@ def listen_to_Boss(*, status, err):
 
 # Main loop of this process. Similar to Arduino loop, get it?
 def loop(*, status, commErr):
-	Tpc = float(status['Config']['Tpc'])
-	Tc = float(status['Config']['Tc'])
+	TPC = float(status['Config']['Tpc'])
+	TPC_TIME = float(status['Config']['TpcTime'])
+	TC = float(status['Config']['Tc'])
+	TC_TIME = float(status['Config']['TcTime'])
+	HUMIDITY_THRESHOLD = int(status['Config']['HumidityThreshold'])
 
 	outQueue = status['OutQueue']
 
 	while True:
 
-		# Only stops if boss says so
-		# and ALWAYS listens to you ;)
-		status, commErr = listen_to_Boss(status=status, err=commErr)
+		# Listen to the secretary commands
+		status, commErr = listen_to_secretary(status=status, err=commErr)
 
 		state = status['State']
 
@@ -207,54 +204,47 @@ def loop(*, status, commErr):
 		if state == STATES.INIT_PRE_COOLING:
 			print('[Arduino] Changing to pre-cooling phase.')
 
-			status['Manager'].setTemperature(Tpc)
+			status['Manager'].setTemperature(TPC)
 			status['Manager'].startCooling()
 			status['State'] = STATES.PRE_COOLING
 
 		# Monitors the humidity and temperature. If humidity below 5% 
-		# and T = Tp stable for ~5 mins changes to COOLING phase
+		# and T = Tp stable for ~14 mins changes to COOLING phase
 		elif state == STATES.PRE_COOLING:
 			times = status['TimeBuffer']
 			temps = status['TempBuffer']
 
-			temps = temps[times > (status['LatestTime'] - 300.0)]
+			temps = temps[times > (status['LatestTime'] - TPC_TIME)]
 
-			print(temps)
-
-			diff = np.sqrt((1/len(temps))*np.sum((temps-Tpc)**2))
+			diff = np.sqrt((1/len(temps))*np.sum((temps-TPC)**2))
 			# diff = np.abs(np.mean(temps) - Tpc) / Tpc
-			print(f'Diff = {diff}')
 
-			if status['LatestHumidity'] < 5 and diff < 0.1: # in C
+			if status['LatestHumidity'] < HUMIDITY_THRESHOLD and diff < 0.1: # in C
 				status['State'] =  STATES.INIT_COOLING
 
 		# Changes temperature to Tc
 		elif state == STATES.INIT_COOLING:
 			print('[Arduino] Changing to cooling phase.')
 
-			status['Manager'].setTemperature(Tc)
+			status['Manager'].setTemperature(TC)
 			status['State'] = STATES.COOLING
 
 		# Monitors humidity. If hum higher than 5%, throw error
 		# Monitors Temperature, checks if its stable at Tc
-		# for ~5 mins
+		# for ~1 min
 		elif state == STATES.COOLING:
 			times = status['TimeBuffer']
 			temps = status['TempBuffer']
 
-			temps = temps[times > (status['LatestTime'] - 300.0) ]
+			temps = temps[times > (status['LatestTime'] - TC_TIME) ]
 
-			print(temps)
-
-			diff = np.sqrt((1/len(temps))*np.sum((temps-Tc)**2))
+			diff = np.sqrt((1/len(temps))*np.sum((temps-TC)**2))
 			# diff = np.abs(np.mean(temps) - Tpc) / Tpc
-			print(f'Diff = {diff}')
 
 			if diff < 0.1: # In degrees
-				print('[Arduino] Changing to running phase.')
 				status['State'] = STATES.INIT_RUNNING
 
-			if status['LatestHumidity'] > 5:
+			if status['LatestHumidity'] > HUMIDITY_THRESHOLD:
 				print('[Arduino] Humidity reached unexpected high levels\
 					during cooling phase. Moving to standby.')
 				commErr = f'{commErr} Humidity reached unexpected high levels \
@@ -265,11 +255,11 @@ def loop(*, status, commErr):
 		# the message to the electrometer if possible. Then, it starts
 		# the measurements.
 		elif state == STATES.INIT_RUNNING:
-
+			print('[Arduino] Changing to running phase.')
 			readyCommand = {\
 				'process'			: Process.IV, \
 				'close' 			: False, \
-				'cmd' 				: 'ready', \
+				'cmd' 				: '_temperatureReady', \
 				'value'				: ''}
 
 			outQueue.put({\
@@ -284,7 +274,7 @@ def loop(*, status, commErr):
 		# Only use here is to check for humidity levels.
 		elif state == STATES.RUNNING:
 
-			if status['LatestHumidity'] > 5:
+			if status['LatestHumidity'] > HUMIDITY_THRESHOLD:
 				print('[Arduino] Humidity reached unexpected high levels \
 					during running phase. Moving to standby.')
 				commErr = f'{commErr} Humidity reached unexpected high levels \
@@ -301,15 +291,30 @@ def loop(*, status, commErr):
 		# start the post_cooling or warming state.
 		# Humidity is not meant to increase here either.
 		elif state == STATES.POST_COOLING:
-			if status['LatestHumidity'] > 5:
+			if status['LatestHumidity'] > HUMIDITY_THRESHOLD:
 				print('[Arduino] Humidity reached unexpected high levels \
 					during post-cooling phase. Moving to standby.')
 				commErr = f'{commErr} Humidity reached unexpected high levels \
 					during post-cooling phase. Moving to standby.'
 				status['State'] = STATES.UNEXPECTED_END
 
-			# Lets say room temp is 18...
-			if status['LatestTemp'] > 18.0:
+			# Lets say room temp is 20, change to standby,
+			# and let the electrometer know we are in post-cooling.
+			if status['LatestTemp'] > 20.0:
+
+				postCoolCMD = {\
+					'process'			: Process.IV, \
+					'close' 			: False, \
+					'cmd' 				: '_postcooling', \
+					'value'				: ''}
+
+				outQueue.put({\
+					'Data' 			: None, \
+					'Error' 		: None, \
+					'FatalError' 	: None,
+					'CMD' 			: postCoolCMD })
+
+
 				print('[Arduino] Changing to standby.')
 				status['State'] = STATES.STANDBY
 
@@ -371,10 +376,13 @@ def arduino_process_main(*, inQueue, outQueue):
 		status['Manager'] = ArduinoManager.sipmArduino()
 		status['Manager'].setup()
 
+		# There needs to be some time bewteen the setup and loop
+		# to allow the arduino to setup.
 		time.sleep(5)
 
 		# Start taking measurements of temperature/humidity
 		print('[Arduino] Arduino starting in standby.')
+		status['State'] = STATES.STANDBY
 		commulativeError = loop(status=status, commErr=commulativeError)
 
 	# Runs if any fatal error is seen.
@@ -385,16 +393,16 @@ def arduino_process_main(*, inQueue, outQueue):
 			'Error' : f'{commulativeError} {err}.', \
 			'FatalError' : True,
 			'CMD' : None})
-		# traceback.print_exc(file=sys.stdout)
+		traceback.print_exc(file=sys.stdout)
 
 	# No fatal errors, send any errors if present.
 	else:
 		print(f'[Arduino] Closing with error: {commulativeError}')
-		outQueue.put({\
-			'Data' : None,
-			'Error' : f'{commulativeError}.', \
-			'FatalError' : False,
-			'CMD' : None})
+		outQueue.put( {\
+			'Data' 			: None, 					\
+			'Error' 		: f'{commulativeError}.', 	\
+			'FatalError' 	: False, 					\
+			'CMD' 			: None })
 
 	# If the arduinoer is closed in any way, open resources
 	finally:

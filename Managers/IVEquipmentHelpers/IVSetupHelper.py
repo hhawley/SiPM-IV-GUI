@@ -100,6 +100,8 @@ class SetupHelper():
 			else:
 				raise Exception(f'{error}. Picoammeter status failed after all zero checks.')
 		else:
+			self.port.SCPIWrite('C0R1X')
+			self.port.Wait487CommandDone()
 			status, error = self.errorhelper.CheckPicoammeterStatus()
 			if not status:
 				raise Exception(f'{error}. Failed at verify setup status')

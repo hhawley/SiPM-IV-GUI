@@ -199,17 +199,20 @@ class ErrorHelper:
 
 				# If errors starts with the '+' it implies no error
 				if errorResponse[0] == '+':
-					# Common error, does not impact performance.
 					if totalErrs == 0:
 						return (True, '')
 					else:
-						break
+						return (False, error)
 
 				elif errorResponse[0] == '-':
 					latestErrorCode = errorResponse[1:4]
-					print(latestErrorCode)
-					if latestErrorCode != '420':
+
+					# 420 is just a generic error that happens when the GPIB
+					# controller tries to communicate with the PC. Annoying.
+					# 350 is when there are too many errors in the buffer.
+					if latestErrorCode != '420' and latestErrorCode != '350':
 						error = f'{error} {errorResponse}, '
+						totalErrs += 1
 				else:
 					error = f'{error} Error response is not the correct format.'
 					break

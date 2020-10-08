@@ -18,6 +18,12 @@ class IVEquipmentManager:
 		if not self.port.is_open:
 			raise Exception('SCPI port not open.')
 
+		if self.port.in_waiting:
+			self.port.reset_input_buffer()
+
+		if self.port.out_waiting:
+			self.port.reset_output_buffer()
+
 		# 0 = lowest range
 		self.currentPicoRange = 0
 
@@ -44,7 +50,7 @@ class IVEquipmentManager:
 			self.currentPicoRange = self.currentPicoRange + 1
 
 		print('[Electrometer] Increasing range on the picoammeter.')
-		print(f'[Electrometer] Current range is {self.ranges[self.currentPicoRange]}')
+		print(f'[Electrometer] Current range is {self.ranges[self.currentPicoRange + 1]}')
 
 		cmd = f'R{(self.currentPicoRange + 1)}X'
 
@@ -61,7 +67,19 @@ class IVEquipmentManager:
 			self.currentPicoRange = self.currentPicoRange - 1
 
 		print('[Electrometer] Decreasing range on the picoammter.')
-		print(f'[Electrometer] Current range is {self.ranges[self.currentPicoRange]}')
+		print(f'[Electrometer] Current range is {self.ranges[self.currentPicoRange + 1]}')
+
+		cmd = f'R{(self.currentPicoRange + 1)}X'
+
+		self.port.SCPIWrite(cmd)
+		self.port.Wait487CommandDone()
+
+	def SetToLowestRange(self):
+		self.port.SetToPicoammter()
+
+		self.currentPicoRange = 0
+
+		print(f'[Electrometer] Current range is {self.ranges[self.currentPicoRange + 1]}')
 
 		cmd = f'R{(self.currentPicoRange + 1)}X'
 
@@ -160,6 +178,8 @@ class IVEquipmentManager:
 
 			self.setuphelper.SetupMultimeter()
 			self.setuphelper.SetupRedPitaya()
+
+			print('[Electrometer] Done with the setup!')
 		except Exception as e:
 			raise e
 
@@ -189,9 +209,9 @@ class IVEquipmentManager:
 
 	# This function will be used a lot so a small
 	# function allows avoiding to write a bit too much.
-	def SetVoltage(self, volt):
+	def SetVoltage(self, volt, limit=False):
 		try:
-			self.voltagehelper.SetVoltage(volt)
+			self.voltagehelper.SetVoltage(volt, limit)
 		except Exception as e:
 			raise e
 
