@@ -34,7 +34,7 @@ class STATES(Enum):
 def read_config():
 	config = configparser.ConfigParser()
 
-	with open('test_file.cfg') as f:
+	with open('file.cfg') as f:
 		config.read_file(f)
 
 	return config['ELECTROMETER']
@@ -157,8 +157,8 @@ def loop(*, status, err):
 			print('[Electrometer] Taking pre-cooling measurements. This blocks \
 the electrometer and arduinoer.')
 			
-			# status['Manager'].SetVoltage(53.5, limit=True)
-			status['Manager'].SetVoltage(0, limit=True)
+			status['Manager'].SetVoltage(53.5, limit=True)
+			# status['Manager'].SetVoltage(0, limit=True)
 			status['Manager'].VoltageOn()
 
 			# Let the voltage supply settle for a it.
@@ -282,7 +282,8 @@ is blocking.')
 			print('[Electrometer] Taking post-cooling measurements. This blocks \
 the electrometer.')
 
-			status['Manager'].SetVoltage(0, limit=True)
+			status['Manager'].SetToLowestRange()
+			status['Manager'].SetVoltage(53.5, limit=True)
 			status['Manager'].VoltageOn()
 			
 			# Let the voltage supply settle for a it.
@@ -297,7 +298,7 @@ the electrometer.')
 						'CMD' 			: None })
 
 			# Set the power supply to standby
-			status['Manager'].SetVoltage(0.0)
+			status['Manager'].SetVoltage(53.5, limit=True)
 			status['Manager'].VoltageOff()
 			
 			numSiPMsTested += 1

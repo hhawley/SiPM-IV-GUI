@@ -22,7 +22,7 @@ import sys, traceback
 def read_config():
 	config = configparser.ConfigParser()
 
-	with open('test_file.cfg') as f:
+	with open('file.cfg') as f:
 		config.read_file(f)
 
 	return config['FILE']

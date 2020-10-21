@@ -58,7 +58,7 @@ class STATES(Enum):
 def read_config():
 	config = configparser.ConfigParser()
 
-	with open('test_file.cfg') as f:
+	with open('file.cfg') as f:
 		config.read_file(f)
 
 	return config['Peltier']
@@ -186,6 +186,7 @@ def loop(*, status, commErr):
 	TC = float(status['Config']['Tc'])
 	TC_TIME = float(status['Config']['TcTime'])
 	HUMIDITY_THRESHOLD = int(status['Config']['HumidityThreshold'])
+	T_AMBIENT = float(status['Config']['TAmbient'])
 
 	outQueue = status['OutQueue']
 
@@ -300,7 +301,7 @@ def loop(*, status, commErr):
 
 			# Lets say room temp is 20, change to standby,
 			# and let the electrometer know we are in post-cooling.
-			if status['LatestTemp'] > 20.0:
+			if status['LatestTemp'] > T_AMBIENT:
 
 				postCoolCMD = {\
 					'process'			: Process.IV, \
